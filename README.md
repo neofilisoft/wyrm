@@ -108,7 +108,22 @@ See `Docs.md` for the updated Wyrm language specification.
 
 ## Roadmap to Systems Programming Language
 
-While the current implementation includes an interpreter in Python and a C11 VM runner suitable for learning and experimentation, the long-term goal is to evolve Wyrm into a native systems programming language. See `TODO_SYSTEM_LANGUAGE.md` for details.
+Wyrm is designed to evolve into a native systems programming language with performance close to C/C++/Rust. The memory safety model is positioned as:
+
+```
+[Most safe]   Rust   - Borrow Checker + Ownership, no raw pointers by default
+              Wyrm   - Ownership + RAII + Safe References + optional unsafe {}
+[Less safe]   C++    - RAII + Smart Pointers, but raw pointers still accessible
+```
+
+Key design goals:
+- **No Garbage Collector** - deterministic memory, suitable for real-time systems
+- **Ownership semantics** - each value has exactly one owner
+- **RAII** - resources freed automatically when leaving scope
+- **`unsafe {}` block** - opt-in for low-level hardware access
+- **Performance target**: >=90% of C for general workloads
+
+See `TODO_SYSTEM_LANGUAGE.md` for the full development roadmap.
 
 ## License
 
