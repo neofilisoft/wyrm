@@ -6,15 +6,18 @@ Wyrm (.wyr) is a C-inspired programming language initially designed for educatio
 
 - Function declarations with `fn`
 - Boolean values: `true`/`false`
-- Logical operators: `&&`, `||`, `!` (with aliases `and`, `or`)
-- Equality: `!=`
+- Logical operators: `&&`, `||`, `!` (with aliases `and`, `or`, `not`)
+- Equality and comparison: `==`, `!=`, `<`, `>`, `<=`, `>=`
 - Conditional statements: `if/elif/else`
 - Block syntax: `{ }`
 - Loops: `repeat/til`
-- Strings and arrays: `#`
+- Arrays: `[1, 2, 3]` with subscript reading (`arr[0]`) and assignment (`arr[0] = 10`)
+- Module import system: `use module.wyr` or `use module.wyr;`
+- Package manager: `wyrpkg`
 - Comments: `//`, `/* */`, `///`
-- Optional semicolons
+- Semicolons: Optional
 - First-class functions with closures
+- Multi-argument print: `print("Numbers:", 1, 2, 3)` (space-separated output)
 - Built-in functions: `print`, `input`, `int`, `float`, `str`, `len`, `type`, `abs`, `min`, `max`, `round`, `pow`
 
 ## Examples
@@ -24,33 +27,44 @@ See the `examples/` directory for sample Wyrm programs:
 - `basics.wyr` - Variables, data types, basic operations
 - `control_flow.wyr` - If-else statements, loops
 - `functions.wyr` - Function definitions, parameters, recursion
-- `data_structures.wyr` - Arrays/lists, string manipulation
+- `data_structures.wyr` - Arrays/lists, indexing, array modifications
 
-## Installation
+## Installation & Setup
 
 ```bash
-# From PyPI (once published)
-pip install wyrmlang
-
-# From source
+# Clone the repository
 git clone https://github.com/yourusername/wyrm.git
 cd wyrm
-pip install -e .
+
+# Set up virtual environment and dependencies
+python -m venv venv
+./venv/bin/pip install -r requirements.txt
 ```
 
 ## Usage
 
 ### Running a Wyrm program
+Using the Python interpreter:
 ```bash
-wyrm examples/hello.wyr
-# or
 python -m wyrm examples/hello.wyr
+```
+
+Using the compiled C11 Wyrm Virtual Machine (`wyrmc.exe`):
+```bash
+./wyrmc.exe examples/hello.wyr
+```
+
+### Package Manager (`wyrpkg`)
+```bash
+# Install package
+python wyrpkg.py install my_package
+
+# List installed packages
+python wyrpkg.py list
 ```
 
 ### Using the REPL
 ```bash
-wyrm
-# or
 python -m wyrm
 ```
 
@@ -75,39 +89,26 @@ interpreter.execute(ast)
 ## Running Tests
 
 ```bash
-# Install test dependencies
-pip install -r requirements.txt
-
 # Run unit tests
 python -m pytest tests/ -v
 
-# Run all examples
+# Run all example programs
 python test_examples.py
 ```
 
-## Building the Package
+## Building the C VM Compiler (`wyrmc`)
 
 ```bash
-python setup.py sdist bdist_wheel
+gcc wyrmc.c -o wyrmc.exe -std=c11 -O2
 ```
 
 ## Language Specification
 
-See `Docs.md` for the original Wyrm language specification.
+See `Docs.md` for the updated Wyrm language specification.
 
 ## Roadmap to Systems Programming Language
 
-While the current implementation is an interpreter in Python suitable for learning and experimentation, the long-term goal is to evolve Wyrm into a systems programming language. See `TODO_SYSTEM_LANGUAGE.md` for detailed plans regarding:
-
-- Compiled implementation (targeting C/C++/Rust)
-- Manual memory management (no garbage collection)
-- Self-hosting compiler aspirations
-- Low-level system access capabilities
-- Performance targets matching or exceeding C/C++
-
-## Color Scheme
-
-The official Wyrm color for branding and CI badges is #3B2A4E (RGB: 59,42,78).
+While the current implementation includes an interpreter in Python and a C11 VM runner suitable for learning and experimentation, the long-term goal is to evolve Wyrm into a native systems programming language. See `TODO_SYSTEM_LANGUAGE.md` for details.
 
 ## License
 

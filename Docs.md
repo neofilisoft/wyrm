@@ -1,44 +1,66 @@
-ภาษา Wyrm หรือ wyrmlang (.wyr):
-ประกาศฟังก์ชัน: fn
-ค่าว่างเปล่า: null
-Boolean: true/false
-ตัวดำเนินการตรรกะ (Operators): &&, ||, !  (รองรับทั้ง &&, || และ and, or เป็น alias กัน มือใหม่ใช้ and กับ or เพื่อเข้าใจง่าย แต่หากต้องการเขียนเร็วและกระชับใช้ && กับ ||)
-ไม่เท่ากับ: !=
-เงื่อนไข: elif
-Block Style: { }
-ลูป: repeat/til
-String & Array: #
-Comments: //, /* */, /// (เหมือนภาษาตระกูล C)
-Notable Operators: ไม่มี
-Semicolon: ใส่หรือไม่ใส่ก็ได้
+ภาษา Wyrm หรือ wyrmlang (.wyr) Specification v1.0.0:
 
-Quiz: if/while/for ระหว่าง condition กับ { มีคำว่า then/do คั่นมั้ยหรือไม่มี
-Answer: ไม่มี — { เปิด block เลย เช่น if x > 1 { ... }
+1. ประกาศฟังก์ชัน: `fn`
+2. ค่าว่างเปล่า: `null`
+3. Boolean: `true`/`false`
+4. ตัวดำเนินการตรรกะ (Operators): `&&`, `||`, `!` (รองรับทั้ง `&&`, `||` และ `and`, `or`, `not` เป็น alias กัน)
+5. การเปรียบเทียบ: `==`, `!=`, `<`, `>`, `<=`, `>=`
+6. เงื่อนไข: `if`, `elif`, `else`
+7. Block Style: `{ }`
+8. ลูป: `repeat` / `til`
+9. Array: ใช้ `[1, 2, 3]` รองรับการเข้าถึงดัชนี (`arr[0]`) และแก้ไขค่าตามดัชนี (`arr[0] = 10`)
+10. การนำเข้าโมดูล: `use module.wyr` หรือ `use module.wyr;`
+11. Package Manager: `wyrpkg` (คำสั่ง `install`, `remove`, `list`)
+12. Multi-arg Print: `print(a, b, c)` หรือ `print a, b, c` คั่นด้วยช่องว่าง
+13. Comments: `//`, `/* */`, `///` (เหมือนภาษาตระกูล C)
+14. Semicolon: ใส่หรือไม่ใส่ก็ได้
 
-Q: repeat { ... } til cond — cond ต้องมีวงเล็บครอบมั้ย
-A: มีวงเล็บ — til (cond) แบบ C-style
-เก็บ // ไว้เป็น comment ตามสเปค แล้วใช้ / ธรรมดาสำหรับ division (ตัด floor division ออก ใช้ int()/math.floor แทน)
+---
 
-// ตัวอย่าง Hello World แบบ Standard
-fn main() {
-    message = "Hello, World!"
-    print(message)
-}
+## ไวยากรณ์ตัวอย่าง
 
-// แบบไม่มีตัวแปร
-fn main() {
-    print("Hello, World!")
-}
+### Block Style & Conditions
+- ไม่มีคำว่า then หรือ do คั่นระหว่าง condition กับ `{`
+  ```wyrm
+  if x > 1 {
+      print("greater")
+  } elif x == 1 {
+      print("equal")
+  } else {
+      print("less")
+  }
+  ```
 
-// แบบ Advanced
-fn main() {
-    // ส่งค่า "Hello, World!" เข้าไปที่พารามิเตอร์ชื่อ message ของฟังก์ชัน print
-    print(message = "Hello, World!") 
-}
+### Loop Syntax
+- `repeat { ... } til (cond)` - ต้องมีวงเล็บครอบเงื่อนไข C-style
+  ```wyrm
+  i = 0
+  repeat {
+      print(i)
+      i = i + 1
+  } til (i >= 5)
+  ```
 
-// การนำเข้าโมดูล (ต้องพัฒนาในอนาคต)
-// ใช้คำสั่ง 'use' คล้ายกับ import ในภาษาอื่นๆ
-// ตัวอย่างการใช้งาน (ยังไม่ได้ implement):
-// use std::io;
-// use math::*;
-// จากนั้นสามารถใช้ฟังก์ชันจากโมดูลนั้นได้โดยตรง
+### Function & Module System
+  ```wyrm
+  use helper.wyr;
+
+  fn add(a, b) {
+      return a + b
+  }
+
+  fn main() {
+      name = input("Enter name: ")
+      print("Hello,", name)
+      sum = add(5, 10)
+      print("Sum is:", sum)
+  }
+  ```
+
+### Arrays
+  ```wyrm
+  numbers = [10, 20, 30]
+  numbers[0] = 99
+  print("First element:", numbers[0])
+  print("Array length:", len(numbers))
+  ```
