@@ -168,3 +168,17 @@ def test_print_output(capsys):
 
     captured = capsys.readouterr()
     assert captured.out.strip() == "Hello, World!"
+
+def test_multi_arg_print_output(capsys):
+    """Test multi-argument print statement output separated by spaces."""
+    code = 'print("Numbers:", 1, 2, 3)'
+    lexer = Lexer(code)
+    tokens = lexer.tokenize()
+    parser = Parser(tokens)
+    statements = parser.parse()
+
+    interpreter = Interpreter()
+    interpreter.execute(statements)
+
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "Numbers: 1 2 3"

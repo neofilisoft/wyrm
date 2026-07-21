@@ -75,11 +75,16 @@ class AssignmentNode(ASTNode):
             return f"AssignmentNode({self.var_name}, {self.value})"
 
 class PrintNode(ASTNode):
-    def __init__(self, expression):
-        self.expression = expression
+    def __init__(self, expression=None, expressions=None):
+        if expressions is not None:
+            self.expressions = expressions
+            self.expression = expressions[0] if expressions else None
+        else:
+            self.expression = expression
+            self.expressions = [expression] if expression is not None else []
 
     def __repr__(self):
-        return f"PrintNode({self.expression})"
+        return f"PrintNode({self.expressions})"
 
 class IfNode(ASTNode):
     def __init__(self, condition, then_body, elif_clauses, else_body):

@@ -157,10 +157,27 @@ class Parser:
             return node
 
     def print_statement(self) -> PrintNode:
-        """Parse a print statement."""
+        """Parse a print statement (supports print(a, b, c) or print a, b, c)."""
         self.expect(TT_KEYWORD, 'print')
-        expr = self.expression()
-        return PrintNode(expr)
+
+        has_paren = False
+        if self.current_token and self.current_token.type == TT_DELIMITER and self.current_token.value == '(':
+            has_paren = True
+            self.advance()  # Skip '('
+
+        expressions = []
+        if self.current_token and (not has_paren or self.current_token.value != ')'):
+            while True:
+                expressions.append(self.expression())
+                if self.current_token and self.current_token.type == TT_DELIMITER and self.current_token.value == ',':
+                    self.advance()
+                else:
+                    break
+
+        if has_paren:
+            self.expect(TT_DELIMITER, ')')
+
+        return PrintNode(expressions=expressions)
 
     def return_statement(self) -> ReturnNode:
         """Parse a return statement."""

@@ -373,8 +373,12 @@ class Interpreter:
 
     def visit_print(self, node: PrintNode):
         """Visit a print node."""
-        value = self.evaluate(node.expression)
-        print(value)
+        if hasattr(node, 'expressions') and node.expressions:
+            values = [self.evaluate(expr) for expr in node.expressions]
+            print(" ".join("null" if v is None else str(v) for v in values))
+        elif hasattr(node, 'expression') and node.expression is not None:
+            value = self.evaluate(node.expression)
+            print("null" if value is None else str(value))
 
     def visit_if(self, node: IfNode):
         """Visit an if node."""

@@ -184,8 +184,10 @@ class Compiler:
         self.bytecode.add_instruction(OpCode.STORE_VAR, var_index)
 
     def visit_PrintNode(self, node: PrintNode):
-        self.visit(node.expression)
-        self.bytecode.add_instruction(OpCode.PRINT)
+        exprs = getattr(node, 'expressions', [node.expression] if getattr(node, 'expression', None) is not None else [])
+        for expr in exprs:
+            self.visit(expr)
+            self.bytecode.add_instruction(OpCode.PRINT)
 
     def visit_IfNode(self, node: IfNode):
         # Compile condition
