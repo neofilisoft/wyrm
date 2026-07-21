@@ -1,0 +1,5 @@
+fn main() {
+    print("กรุณาป้อนชื่อของคุณ: ");
+    let name = input();
+    print("สวัสดี, " + name + "!");
+}

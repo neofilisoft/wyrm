@@ -1,0 +1,44 @@
+// Test logical operators
+a = true
+b = false
+
+// Test AND with &&
+c = a && b
+print("a && b = " + str(c))  // Should be false
+
+d = a && a
+print("a && a = " + str(d))  // Should be true
+
+e = b && b
+print("b && b = " + str(e))  // Should be false
+
+// Test OR with ||
+f = a || b
+print("a || b = " + str(f))  // Should be true
+
+g = b || b
+print("b || b = " + str(g))  // Should be false
+
+// Test NOT with !
+h = !a
+print("!a = " + str(h))      // Should be false
+
+i = !b
+print("!b = " + str(i))      // Should be true
+
+// Mixed expressions
+j = (a && b) || (!a && b)
+print("(a && b) || (!a && b) = " + str(j))  // Should be false
+
+k = (a || b) && !(a && b)
+print("(a || b) && !(a && b) = " + str(k))  // Should be true (XOR)
+
+// Test with word aliases
+l = a and b
+print("a and b = " + str(l))  // Should be false
+
+m = a or b
+print("a or b = " + str(m))   // Should be true
+
+n = not a
+print("not a = " + str(n))    // Should be false

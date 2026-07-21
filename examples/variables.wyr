@@ -1,0 +1,18 @@
+// Variable declaration and usage
+fn main() {
+    x = 42
+    y = 3.14
+    name = "Alice"
+    is_student = true
+
+    print("Integer:", x)
+    print("Float:", y)
+    print("String:", name)
+    print("Boolean:", is_student)
+
+    // Arithmetic operations
+    sum = x + 8
+    product = y * 2
+    print("Sum:", sum)
+    print("Product:", product)
+}

@@ -1,0 +1,45 @@
+// Test various features with bytecode compiler
+var x = 10
+dec PI = 3.14159
+x = x + 5  // Should work
+
+// Test null
+data = null
+result = data == null  // Should be true
+
+// Test logical operators
+a = true
+b = false
+c = a && b  // false
+d = a || b  // true
+e = !a      // false
+
+// Test if-else
+if x > 10 {
+    y = 1
+} else {
+    y = 2
+}
+
+// Test loop
+i = 0
+repeat {
+    i = i + 1
+} til (i >= 3)
+
+// Test function
+fn add(p, q) {
+    return p + q
+}
+sum = add(5, 3)
+
+// Print results
+print("x: " + x)
+print("PI: " + PI)
+print("data is null: " + result)
+print("a && b: " + c)
+print("a || b: " + d)
+print("!a: " + e)
+print("y: " + y)
+print("i after loop: " + i)
+print("sum: " + sum)

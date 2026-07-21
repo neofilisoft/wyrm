@@ -1,0 +1,14 @@
+// Basic Wyrm language features demonstration
+
+// Variables and data types
+age = 25
+height = 5.9
+name = "John Doe"
+is_student = true
+nothing = null
+
+print("Age: " + str(age))
+print("Height: " + str(height))
+print("Name: " + name)
+print("Is student: " + str(is_student))
+print("Nothing: " + str(nothing))

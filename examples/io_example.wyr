@@ -1,0 +1,9 @@
+// Example showing use of std::io (not yet implemented)
+use std::io;
+
+fn main() {
+    print("กรุณาป้อนชื่อของคุณ: ");
+    let name = std::io::read_line();
+    let name = name.trim();
+    print("สวัสดี, " + name + "!");
+}

@@ -1,0 +1,19 @@
+// Test variable declarations: var (mutable) and dec (immutable)
+
+// Test mutable variable with var
+var x = 10
+x = 20  // Should work
+print("x = " + str(x))
+
+// Test immutable variable with dec
+dec y = 30
+// y = 40  // This should cause an error
+print("y = " + str(y))
+
+// Test mixed usage
+var z = 5
+dec PI = 3.14159
+z = z + 1  // Should work
+// PI = 3.14  // Should fail
+print("z = " + str(z))
+print("PI = " + str(PI))

@@ -1,0 +1,7 @@
+// Test && operator
+fn main() {
+    a = true
+    b = true
+    c = a && b
+    print(c)
+}

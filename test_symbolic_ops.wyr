@@ -1,0 +1,23 @@
+// Test symbolic logical operators
+a = true
+b = false
+
+// Test AND with &&
+c = a && b
+print("a && b: " + str(c))  // Should be false
+
+// Test OR with ||
+d = a || b
+print("a || b: " + str(d))  // Should be true
+
+// Test NOT with !
+e = !a
+print("!a: " + str(e))      // Should be false
+
+// Test mixed precedence
+f = a && b || !a
+print("a && b || !a: " + str(f))  // Should be true (false || true = true)
+
+// Test with parentheses
+g = a && (b || !a)
+print("a && (b || !a): " + str(g))  // Should be false (true && (false || false) = false && false = false)

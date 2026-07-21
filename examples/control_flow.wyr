@@ -1,0 +1,54 @@
+// Control flow examples in Wyrm
+
+// If-elif-else statement
+score = 85
+if score >= 90 {
+    grade = "A"
+} elif score >= 80 {
+    grade = "B"
+} elif score >= 70 {
+    grade = "C"
+} elif score >= 60 {
+    grade = "D"
+} else {
+    grade = "F"
+}
+print("Your grade is: " + grade)
+
+// Repeat loop (similar to do-while)
+count = 0
+repeat {
+    print("Count is: " + str(count))
+    count = count + 1
+} til (count >= 5)
+
+// Repeat loop with break-like behavior (using condition)
+i = 0
+repeat {
+    if i == 3 {
+        // Break would go here, but we'll just not increment and let condition handle it
+        // In a real implementation, we might have break/continue statements
+    }
+    print("i is: " + str(i))
+    i = i + 1
+} til (i >= 5)
+
+// Nested loops
+i = 0
+repeat {
+    j = 0
+    repeat {
+        print("i=" + str(i) + ", j=" + str(j))
+        j = j + 1
+    } til (j >= 3)
+    i = i + 1
+} til (i >= 2)
+
+// Using loops for calculation
+sum = 0
+i = 1
+repeat {
+    sum = sum + i
+    i = i + 1
+} til (i > 10)
+print("Sum of 1 to 10: " + str(sum))
