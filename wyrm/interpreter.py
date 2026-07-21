@@ -224,6 +224,8 @@ class Interpreter:
             pass
         elif isinstance(stmt, IndexNode):
             self.evaluate(stmt)
+        elif isinstance(stmt, IndexAssignNode):
+            self.visit_index_assign(stmt)
         elif isinstance(stmt, UseNode):
             self.visit_use(stmt)
         else:
@@ -434,6 +436,18 @@ class Interpreter:
             return obj[index]
         else:
             raise RuntimeError(f"Object of type {type(obj).__name__} is not subscriptable")
+
+    def visit_index_assign(self, node) -> None:
+        """Visit an indexed assignment node: arr[i] = value."""
+        obj = self.global_env.get(node.obj.name)
+        index = self.evaluate(node.index)
+        value = self.evaluate(node.value)
+        if isinstance(obj, list):
+            obj[index] = value
+        elif isinstance(obj, str):
+            raise RuntimeError("Strings are immutable - cannot assign to index")
+        else:
+            raise RuntimeError(f"Object of type {type(obj).__name__} does not support item assignment")
 
 class BuiltinFunction:
     def __init__(self, name: str, func: Callable[[List[Any]], Any]):

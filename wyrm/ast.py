@@ -131,6 +131,15 @@ class IndexNode(ASTNode):
     def __repr__(self):
         return f"IndexNode({self.obj}, {self.index})"
 
+class IndexAssignNode(ASTNode):
+    def __init__(self, obj, index, value):
+        self.obj = obj    # IdentifierNode of the list
+        self.index = index  # index expression
+        self.value = value  # value to assign
+
+    def __repr__(self):
+        return f"IndexAssignNode({self.obj}, {self.index}, {self.value})"
+
 
 class ReturnNode(ASTNode):
     def __init__(self, expr):

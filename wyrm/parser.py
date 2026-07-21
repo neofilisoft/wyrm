@@ -17,6 +17,7 @@ from .ast import (
     FunctionCallNode,
     ListNode,
     IndexNode,
+    IndexAssignNode,
     ReturnNode,
     UseNode
 )
@@ -111,9 +112,12 @@ class Parser:
                 # These can be used in expressions, but as statements they're just expressions
                 return self.expression_statement()
         elif self.current_token.type == TT_IDENTIFIER:
-            # Check if it's an assignment or function call
+            # Peek ahead: identifier[index] = value  OR  identifier = value  OR  func call
             if self.peek() and self.peek().type == TT_OPERATOR and self.peek().value == '=':
                 return self.assignment()
+            elif self.peek() and self.peek().type == TT_DELIMITER and self.peek().value == '[':
+                # Could be indexed assignment: name[expr] = value
+                return self.indexed_assignment_or_expr()
             else:
                 return self.expression_statement()
 
@@ -133,6 +137,24 @@ class Parser:
         self.expect(TT_OPERATOR, '=')
         value = self.expression()
         return AssignmentNode(var_name, value)
+
+    def indexed_assignment_or_expr(self):
+        """Parse indexed assignment like arr[i] = value, or fall back to expression."""
+        name_token = self.current_token
+        name_node = IdentifierNode(name_token)
+        self.advance()  # consume identifier
+        self.advance()  # consume '['
+        index = self.expression()
+        self.expect(TT_DELIMITER, ']')
+        # Check if followed by '='
+        if self.current_token and self.current_token.type == TT_OPERATOR and self.current_token.value == '=':
+            self.advance()  # consume '='
+            value = self.expression()
+            return IndexAssignNode(name_node, index, value)
+        else:
+            # Not an assignment - wrap as IndexNode expression statement
+            node = IndexNode(name_node, index)
+            return node
 
     def print_statement(self) -> PrintNode:
         """Parse a print statement."""
