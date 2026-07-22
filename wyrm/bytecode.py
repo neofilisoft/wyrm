@@ -313,13 +313,14 @@ class VM:
             'float': float,
             'str': str,
             'len': len,
-            'True': True,
-            'False': False,
-            'None': None,
+            # Wyrm language keywords
+            'true': True,
+            'false': False,
+            'null': None,
         })
 
     def _builtin_print(self, *args):
-        print(' '.join(str(arg) for arg in args))
+        print(' '.join('null' if arg is None else str(arg) for arg in args))
         return None
 
     def _builtin_input(self, prompt=''):
@@ -409,7 +410,7 @@ class VM:
             self.stack.append(not a)
         elif opcode == OpCode.PRINT:
             value = self.stack.pop()
-            print(value)
+            print('null' if value is None else value)
         elif opcode == OpCode.JUMP:
             self.ip = arg
         elif opcode == OpCode.JUMP_IF_FALSE:

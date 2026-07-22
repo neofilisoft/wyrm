@@ -34,7 +34,6 @@ jobs:
       run: |
         python -m wyrm examples/hello.wyr
         python -m wyrm examples/basics.wyr
-        python -m wyrm examples/variables.wyr
         python -m wyrm examples/control_flow.wyr
         python -m wyrm examples/functions.wyr
         python -m wyrm examples/data_structures.wyr

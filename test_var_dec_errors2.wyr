@@ -1,9 +1,0 @@
-// Test variable declarations: var (mutable) and dec (immutable) - expecting errors
-
-// Test mutable variable with var
-var z = 5
-dec PI = 3.14159
-z = z + 1  // Should work
-PI = 3.14  // This should cause an error
-print("z = " + str(z))
-print("PI = " + str(PI))
