@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define WYRPKG_VERSION "0.1.0"
+#define WYRPKG_VERSION "1.0.0"
 
 int main(int argc, char *argv[]) {
     if (argc > 1) {

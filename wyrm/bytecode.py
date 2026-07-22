@@ -304,6 +304,11 @@ class VM:
 
             self._execute_instruction(opcode, arg)
 
+        # Auto-call main() if defined, matching Interpreter behavior
+        main_func = self.globals.get('main')
+        if callable(main_func):
+            main_func()
+
     def _init_builtins(self):
         """Initialize built-in functions and values"""
         self.globals.update({
@@ -492,3 +497,23 @@ def compile_and_execute(source: str):
     vm = VM()
     vm.execute(bytecode)
     return vm
+
+def serialize_bytecode(bytecode: Bytecode) -> str:
+    import json
+    data = {
+        "instructions": bytecode.instructions,
+        "constants": bytecode.constants,
+        "varnames": bytecode.varnames,
+        "names": bytecode.names
+    }
+    return json.dumps(data, ensure_ascii=False)
+
+def deserialize_bytecode(json_str: str) -> Bytecode:
+    import json
+    data = json.loads(json_str)
+    bytecode = Bytecode()
+    bytecode.instructions = [tuple(instr) for instr in data["instructions"]]
+    bytecode.constants = data["constants"]
+    bytecode.varnames = data["varnames"]
+    bytecode.names = data["names"]
+    return bytecode

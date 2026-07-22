@@ -9,7 +9,7 @@ import shutil
 import json
 from pathlib import Path
 
-WYRPKG_VERSION = "0.1.0"
+WYRPKG_VERSION = "1.0.0"
 PROJECT_ROOT = Path(__file__).resolve().parent
 PACKAGES_DIR = PROJECT_ROOT / "packages"
 LOCK_FILE = PROJECT_ROOT / "wyrpkg.lock"

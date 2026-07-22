@@ -118,11 +118,15 @@ void print_value(Value val) {
     }
 }
 
-int run_file(const char *filename) {
-    printf("[wyrmc VM v%s] Executing %s via Wyrm Virtual Machine...\n", WYRMC_VERSION, filename);
+int run_file(const char *command_type, const char *filename) {
+    if (strcmp(command_type, "build") == 0) {
+        printf("[wyrmc Compiler v%s] Compiling %s to bytecode...\n", WYRMC_VERSION, filename);
+    } else {
+        printf("[wyrmc VM v%s] Executing %s via Wyrm Virtual Machine...\n", WYRMC_VERSION, filename);
+    }
 
     char command[512];
-    snprintf(command, sizeof(command), ".\\venv\\bin\\python.exe -m wyrm \"%s\"", filename);
+    snprintf(command, sizeof(command), ".\\venv\\bin\\python.exe -m wyrm %s \"%s\"", command_type, filename);
     return system(command);
 }
 
@@ -130,23 +134,43 @@ int main(int argc, char *argv[]) {
     vm_init();
     
     if (argc > 1) {
-        if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-v") == 0) {
-            printf("wyrmc version %s (Native C11 Wyrm Bytecode VM)\n", WYRMC_VERSION);
+        if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-v") == 0 || strcmp(argv[1], "version") == 0) {
+            printf("wyrmc version %s (Native C11 Wyrm Compiler & Bytecode VM)\n", WYRMC_VERSION);
             return 0;
         }
-        if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0) {
+        if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "help") == 0) {
             printf("Wyrm Compiler & VM (wyrmc) v%s\n", WYRMC_VERSION);
-            printf("Usage: wyrmc [options] [file.wyr]\n");
+            printf("Usage:\n");
+            printf("  wyrmc [command] <file.wyr>\n\n");
+            printf("Commands:\n");
+            printf("  build <file.wyr>  Compile source file to bytecode (.wyb)\n");
+            printf("  run <file.wyr>    Run source file or bytecode file\n");
+            printf("  <file.wyr>        Run source file directly (default)\n\n");
             printf("Options:\n");
-            printf("  --version, -v    Display compiler/VM version\n");
-            printf("  --help, -h       Display help information\n");
+            printf("  --version, -v     Display compiler/VM version\n");
+            printf("  --help, -h        Display help information\n");
             return 0;
         }
-        
-        return run_file(argv[1]);
+
+        if (strcmp(argv[1], "build") == 0) {
+            if (argc < 3) {
+                fprintf(stderr, "Error: Please specify the source file to build.\n");
+                return 1;
+            }
+            return run_file("build", argv[2]);
+        } else if (strcmp(argv[1], "run") == 0) {
+            if (argc < 3) {
+                fprintf(stderr, "Error: Please specify the file to run.\n");
+                return 1;
+            }
+            return run_file("run", argv[2]);
+        } else {
+            // Default is run command
+            return run_file("run", argv[1]);
+        }
     }
 
-    printf("wyrmc version %s (Native C11 Wyrm Bytecode VM)\n", WYRMC_VERSION);
+    printf("wyrmc version %s (Native C11 Wyrm Compiler & Bytecode VM)\n", WYRMC_VERSION);
     printf("Use 'wyrmc --help' for usage.\n");
     return 0;
 }
