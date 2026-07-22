@@ -1,0 +1,66 @@
+// Control flow examples in Wyrm
+
+// If-elif-else statement
+var score = 85
+var grade = "F"
+if score >= 90 {
+    grade = "A"
+} elif score >= 80 {
+    grade = "B"
+} elif score >= 70 {
+    grade = "C"
+} elif score >= 60 {
+    grade = "D"
+} else {
+    grade = "F"
+}
+print("Your grade is: " + grade)
+
+// Repeat loop (similar to do-while)
+var count = 0
+repeat {
+    print("Count is: " + str(count))
+    count = count + 1
+} til (count >= 5)
+
+// Repeat loop demonstrating break statement
+var i = 0
+repeat {
+    if i == 3 {
+        print("Breaking at 3")
+        break
+    }
+    print("i is: " + str(i))
+    i = i + 1
+} til (i >= 5)
+
+// Repeat loop demonstrating continue statement
+var k = 0
+repeat {
+    k = k + 1
+    if k == 2 {
+        print("Skipping 2 (continue)")
+        continue
+    }
+    print("k is: " + str(k))
+} til (k >= 4)
+
+// Nested loops
+var outer = 0
+repeat {
+    var inner = 0
+    repeat {
+        print("outer=" + str(outer) + ", inner=" + str(inner))
+        inner = inner + 1
+    } til (inner >= 3)
+    outer = outer + 1
+} til (outer >= 2)
+
+// Using loops for calculation
+var sum = 0
+var n = 1
+repeat {
+    sum = sum + n
+    n = n + 1
+} til (n > 10)
+print("Sum of 1 to 10: " + str(sum))

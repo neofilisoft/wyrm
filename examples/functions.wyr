@@ -1,0 +1,68 @@
+// Function examples in Wyrm
+
+// Simple function
+fn greet() {
+    print("Hello World")
+}
+
+// Function with parameters
+fn greet_person(name) {
+    print("Hello, " + name + "!")
+}
+
+// Function with multiple parameters
+fn add(a, b) {
+    return a + b
+}
+
+// Function that returns a value
+fn multiply(x, y) {
+    var result = x * y
+    return result
+}
+
+// Function with conditional logic
+fn absolute_value(n) {
+    if n < 0 {
+        return -n
+    } else {
+        return n
+    }
+}
+
+// Function that calculates factorial using recursion
+fn factorial(n) {
+    if n <= 1 {
+        return 1
+    } else {
+        return n * factorial(n - 1)
+    }
+}
+
+// Main function to demonstrate usage
+fn main() {
+    // Call simple function
+    greet()
+
+    // Call function with parameter
+    greet_person("Alice")
+
+    // Call function that returns a value
+    var sum_result = add(5, 3)
+    print("5 + 3 = " + str(sum_result))
+
+    var product_result = multiply(4, 6)
+    print("4 * 6 = " + str(product_result))
+
+    var abs_result = absolute_value(-10)
+    print("|-10| = " + str(abs_result))
+
+    var fact_result = factorial(5)
+    print("5! = " + str(fact_result))
+
+    // Function parameters can be expressions
+    print("3 * 4 + 2 = " + str(multiply(3, 4) + 2))
+}
+
+// Call main function
+main()

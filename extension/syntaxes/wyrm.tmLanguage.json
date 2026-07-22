@@ -1,0 +1,208 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Wyrm",
+  "scopeName": "source.wyr",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#constants"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#declarations"
+    },
+    {
+      "include": "#function-definitions"
+    },
+    {
+      "include": "#function-calls"
+    },
+    {
+      "include": "#builtins"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#punctuation"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.wyr",
+          "begin": "//",
+          "end": "$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.wyr",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.wyr",
+              "match": "\\\\(n|t|r|\\\\|\")"
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.wyr",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.wyr",
+              "match": "\\\\(n|t|r|\\\\|')"
+            }
+          ]
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.wyr",
+          "match": "\\b(true|false|null)\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.wyr",
+          "match": "\\b(if|elif|else|repeat|til|break|continue|return|use)\\b"
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "name": "storage.type.wyr",
+          "match": "\\b(var|dec)\\b"
+        }
+      ]
+    },
+    "function-definitions": {
+      "patterns": [
+        {
+          "match": "\\b(fn)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+          "captures": {
+            "1": {
+              "name": "storage.type.function.wyr"
+            },
+            "2": {
+              "name": "entity.name.function.wyr"
+            }
+          }
+        }
+      ]
+    },
+    "function-calls": {
+      "patterns": [
+        {
+          "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)(?=\\s*\\()",
+          "captures": {
+            "1": {
+              "name": "entity.name.function.wyr"
+            }
+          }
+        }
+      ]
+    },
+    "builtins": {
+      "patterns": [
+        {
+          "name": "support.function.builtin.wyr",
+          "match": "\\b(print|input|int|float|str|len|type|abs|max|min|round|pow|append|pop)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.logical.wyr",
+          "match": "\\b(and|or|not)\\b|&&|\\|\\||!"
+        },
+        {
+          "name": "keyword.operator.assignment.compound.wyr",
+          "match": "\\+=|-=|\\*=|/=|%="
+        },
+        {
+          "name": "keyword.operator.comparison.wyr",
+          "match": "==|!=|<=|>=|<|>"
+        },
+        {
+          "name": "keyword.operator.assignment.wyr",
+          "match": "="
+        },
+        {
+          "name": "keyword.operator.arithmetic.wyr",
+          "match": "\\+|-|\\*|//|/|%"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.wyr",
+          "match": "\\b\\d+\\.\\d+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.wyr",
+          "match": "\\b\\d+\\b"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.definition.parameters.begin.wyr",
+          "match": "\\("
+        },
+        {
+          "name": "punctuation.definition.parameters.end.wyr",
+          "match": "\\)"
+        },
+        {
+          "name": "punctuation.section.block.begin.wyr",
+          "match": "\\{"
+        },
+        {
+          "name": "punctuation.section.block.end.wyr",
+          "match": "\\}"
+        },
+        {
+          "name": "punctuation.section.bracket.begin.wyr",
+          "match": "\\["
+        },
+        {
+          "name": "punctuation.section.bracket.end.wyr",
+          "match": "\\]"
+        },
+        {
+          "name": "punctuation.separator.comma.wyr",
+          "match": ","
+        },
+        {
+          "name": "punctuation.terminator.statement.wyr",
+          "match": ";"
+        }
+      ]
+    }
+  }
+}

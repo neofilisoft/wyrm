@@ -1,0 +1,35 @@
+{
+  "name": "wyrm-syntax",
+  "displayName": "Wyrm Language Support",
+  "description": "Comprehensive syntax highlighting and configuration for the Wyrm language (.wyr)",
+  "version": "1.2.0",
+  "publisher": "neofilisoft",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "wyrm",
+        "aliases": [
+          "Wyrm",
+          "wyrm"
+        ],
+        "extensions": [
+          ".wyr"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "wyrm",
+        "scopeName": "source.wyr",
+        "path": "./syntaxes/wyrm.tmLanguage.json"
+      }
+    ]
+  }
+}

@@ -1,0 +1,65 @@
+// Data structures examples in Wyrm
+
+// Arrays (lists)
+var numbers = [1, 2, 3, 4, 5]
+print("Numbers:", numbers)
+
+// Accessing elements
+var first = numbers[0]
+var second = numbers[1]
+var last = numbers[4]
+print("First:", first)
+print("Second:", second)
+print("Last:", last)
+
+// Modifying elements
+numbers[0] = 10
+print("Modified numbers:", numbers)
+
+// Getting length
+var length = len(numbers)
+print("Length:", length)
+
+// Mixed array
+var mixed = [1, "hello", 3.14, true]
+print("Mixed array:", mixed)
+
+// Strings as arrays of characters
+var text = "Hello"
+var first_char = text[0]
+print("First character:", first_char)
+
+// String length
+var text_len = len(text)
+print("Length of text:", text_len)
+
+// Array operations (built-in append and pop)
+var mylist = [10, 20]
+print("Initial list:", mylist)
+append(mylist, 30)
+print("After append:", mylist)
+var popped = pop(mylist)
+print("Popped value:", popped)
+print("After pop:", mylist)
+
+// Example of using arrays for calculations
+var scores = [85, 92, 78, 96, 88]
+var total = 0
+var idx = 0
+repeat {
+    total = total + scores[idx]
+    idx = idx + 1
+} til (idx >= len(scores))
+var average = total / len(scores)
+print("Average score:", average)
+
+// Finding maximum in array
+var max_score = scores[0]
+var j = 1
+repeat {
+    if scores[j] > max_score {
+        max_score = scores[j]
+    }
+    j = j + 1
+} til (j >= len(scores))
+print("Maximum score: " + str(max_score))

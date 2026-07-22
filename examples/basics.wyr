@@ -1,0 +1,14 @@
+// Basic Wyrm language features demonstration
+
+// Variables and data types (using explicit declarations)
+var age = 25
+var height = 5.9
+var name = "John Doe"
+var is_student = true
+var nothing = null
+
+print("Age: " + str(age))
+print("Height: " + str(height))
+print("Name: " + name)
+print("Is student: " + str(is_student))
+print("Nothing: " + str(nothing))
