@@ -174,13 +174,18 @@ async function boot() {
     }
 
     // JS-side async input handler: called by Python, returns a JS Promise
-    // that resolves when the user submits the stdin bar
-    const jsInputHandler = pyodide.createProxy(async function(prompt) {
+    // that resolves when the user submits the stdin bar.
+    // NOTE: there is no top-level `pyodide.createProxy()` API. Plain JS
+    // functions assigned into pyodide.globals are automatically wrapped
+    // as callable JsProxy objects on the Python side, and a Promise
+    // returned from them is automatically awaitable from Python — so we
+    // just hand the function over directly.
+    const jsInputHandler = async function(prompt) {
       return new Promise((resolve) => {
         pendingInputResolve = resolve;
         showStdinBar(String(prompt));
       });
-    });
+    };
     pyodide.globals.set('_js_input_handler', jsInputHandler);
 
     await pyodide.runPythonAsync(`
