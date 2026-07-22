@@ -1,5 +1,8 @@
 # Wyrm Language 
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-333333.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.2.0-B10C1A)](https://github.com/neofilisoft/wyrm/releases)
+
 Wyrm (.wyr) is a C-inspired programming language initially designed for educational purposes and language experimentation, with ongoing development toward becoming a systems programming language.
 
 ## Features
