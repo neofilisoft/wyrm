@@ -51,7 +51,7 @@ def run_file(filepath):
             sys.exit(1)
 
 def build_file(filepath):
-    """Compile a Wyrm source file into a bytecode file (.wyb)."""
+    """Compile a Wyrm source file into a native executable (.exe) using GCC."""
     if not os.path.exists(filepath):
         print(f"Error: File '{filepath}' not found.")
         sys.exit(1)
@@ -60,31 +60,42 @@ def build_file(filepath):
         print("Error: Can only compile '.wyr' source files.")
         sys.exit(1)
 
-    output_path = filepath[:-4] + '.wyb'
+    # Determine binary name
+    base_path = filepath[:-4]
+    c_temp_path = base_path + "_temp.c"
+    output_exe = base_path + ".exe"
 
     with open(filepath, 'r', encoding='utf-8') as f:
         source = f.read()
 
     try:
-        import json
-        lexer = Lexer(source)
-        tokens = lexer.tokenize()
-        parser = Parser(tokens)
-        ast = parser.parse()
+        from .transpiler import transpile_to_c
+        import subprocess
 
-        compiler = Compiler()
-        bytecode = compiler.compile(ast)
+        # Transpile to C
+        c_code = transpile_to_c(source)
+        
+        with open(c_temp_path, 'w', encoding='utf-8') as f:
+            f.write(c_code)
 
-        # Embed source alongside bytecode for full execution support
-        bc_data = json.loads(serialize_bytecode(bytecode))
-        bc_data['source'] = source
-        bc_data['version'] = '1.0.0'
+        # Call GCC to compile to Native Binary
+        cmd = ["gcc", c_temp_path, "-o", output_exe, "-std=c11", "-O2", "-lm"]
+        result = subprocess.run(cmd, capture_output=True, text=True)
 
-        with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(bc_data, f, ensure_ascii=False)
-        print(f"Successfully compiled '{filepath}' -> '{output_path}'.")
+        # Clean up temp C file
+        if os.path.exists(c_temp_path):
+            os.remove(c_temp_path)
+
+        if result.returncode != 0:
+            print("C Compilation Error:")
+            print(result.stderr)
+            sys.exit(1)
+
+        print(f"Successfully compiled '{filepath}' -> Native Binary '{output_exe}'")
     except Exception as e:
         print(f"Compilation Error: {e}")
+        if os.path.exists(c_temp_path):
+            os.remove(c_temp_path)
         sys.exit(1)
 
 def run_repl():
