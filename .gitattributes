@@ -1,0 +1,32 @@
+# ============================================================
+# GitHub Linguist Configuration for Wyrm Repository
+# Goal: Wyrm (most) > C (second) > others (minor/excluded)
+# ============================================================
+
+# --- Wyrm source files: PRIMARY language ---
+# Force detection and ensure not excluded
+*.wyr linguist-language=Wyrm
+*.wyr linguist-detectable=true
+
+# --- C files: keep as real code ---
+*.c linguist-language=C
+wyrmc.c linguist-detectable=true
+wyrpkg.c linguist-detectable=true
+
+# --- Python: mark as documentation (excludes from language bar) ---
+# These are interpreter/tooling infrastructure, not the project language
+*.py linguist-documentation=true
+
+# --- HTML: vendored (heavy file wyrm.html, 47KB) ---
+*.html linguist-vendored=true
+
+# --- JavaScript: vendored ---
+*.js linguist-vendored=true
+
+# --- CMake: vendored ---
+CMakeLists.txt linguist-vendored=true
+
+# --- Generated/cache files ---
+__pycache__/** linguist-vendored=true
+*.pyc linguist-vendored=true
+.pytest_cache/** linguist-vendored=true
