@@ -1,0 +1,6 @@
+// Helper module for test
+dec GREETING = "Hello from imported module!"
+
+fn add_nums(a, b) {
+    return a + b
+}
