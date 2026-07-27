@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="wyrmlang",
-    version="1.2",
+    version="2.2",
     author="Neofilisoft",
     author_email="breakm82a1@gmail.com",
     description="Wyrm - A simple C-inspired programming language",
