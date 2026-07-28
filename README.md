@@ -1,140 +1,89 @@
-# Wyrm Language 
-
+# Wyrm Language
 [![License: MIT](https://img.shields.io/badge/License-MIT-333333.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-2.2.0-B10C1A)](https://github.com/neofilisoft/wyrm/releases)
 
-Wyrm (.wyr) is a C-inspired programming language initially designed for educational purposes and language experimentation, with ongoing development toward becoming a systems programming language.
+Wyrm (`.wyr`) is a static systems programming language. The primary execution path is AOT compilation to native binaries through a C11 codegen/runtime path. Interpreter mode exists as a secondary developer workflow for fast feedback while the language moves toward full self-hosting.
+
+## Position
+
+- Static systems language
+- AOT-first compilation strategy
+- Primary codegen target: C11
+- Native runtime owned by Wyrm, developed in C11 first and intended to become self-hosted over time
+- Dev interpreter mode for quick script/testing workflows
+- `wyrpkg` all-in-one toolchain in the style of Cargo
 
 ## Features
 
 - Function declarations with `fn`
-- Boolean values: `true`/`false`
-- Logical operators: `&&`, `||`, `!` (with aliases `and`, `or`, `not`)
+- Static primitive type direction: `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `f32`, `f64`, `bool`, `char`, `string`
+- Boolean values: `true` / `false`
+- Empty value: `null`
+- Logical operators: `&&`, `||`, `!` with aliases `and`, `or`, `not`
 - Equality and comparison: `==`, `!=`, `<`, `>`, `<=`, `>=`
-- Conditional statements: `if/elif/else`
+- Conditional statements: `if` / `elif` / `else`
 - Block syntax: `{ }`
-- Loops: `do/til` (with alias `repeat/til`)
-- Arrays: `[1, 2, 3]` with subscript reading (`arr[0]`) and assignment (`arr[0] = 10`)
+- Loops: `do` / `til` with `repeat` / `til` alias
+- Arrays: `[1, 2, 3]`, indexing, slicing, and index assignment
 - Module import system: `use module.wyr` or `use module.wyr;`
-- Package manager: `wyrpkg`
+- Package manager/toolchain: `wyrpkg`
 - Comments: `//`, `/* */`, `///`
-- Semicolons: Optional
-- First-class functions with closures
-- Multi-argument print: `print("Numbers:", 1, 2, 3)` (space-separated output)
-- Built-in functions: `print`, `input`, `int`, `float`, `str`, `len`, `type`, `abs`, `min`, `max`, `round`, `pow`
-- **Ownership & RAII System**: Scope-based resource management where resources are automatically reclaimed when leaving their lexical scope.
-- **Arena Allocator**: Highly efficient memory region allocation via `arena name(size)` and `name.alloc(size)`.
-- **Explicit Unsafe Blocks**: Restricts risky raw pointer operations to `unsafe { ... }` blocks.
-- **Raw Memory Builtins**: Manual allocation/deallocation via `malloc`, `free`, and `realloc` (within unsafe blocks), equipped with scope-based fallback auto-cleanup to prevent memory leaks.
+- Optional semicolons
+- Ownership and RAII direction with `owned`, `unsafe`, arena allocation, and raw memory APIs
 
-## Examples
+## Native Toolchain
 
-See the `examples/` directory for sample Wyrm programs:
-- `hello.wyr` - Classic Hello World
-- `basics.wyr` - Variables, data types, basic operations
-- `control_flow.wyr` - If-else statements, loops
-- `functions.wyr` - Function definitions, parameters, recursion
-- `data_structures.wyr` - Arrays/lists, indexing, array modifications
-
-## Installation & Setup
+Build the C-native tools:
 
 ```bash
-# Clone the repository
-git clone https://github.com/neofilisoft/wyrm.git
-cd wyrm
-
-# Set up virtual environment and dependencies
-python -m venv venv
-./venv/bin/pip install -r requirements.txt
+gcc scr/wyrmc.c -o wyrm.exe -std=c11 -O2 -lm
+gcc scr/wyrmc.c -o wyrmc.exe -std=c11 -O2 -lm
+gcc scr/wyrpkg.c -o wyrpkg.exe -std=c11 -O2
 ```
 
-## Usage
-
-### Running a Wyrm program
-Using the Python interpreter:
-```bash
-python -m wyrm examples/hello.wyr
-```
-
-Using the compiled C11 Wyrm Virtual Machine (`wyrmc.exe`):
-```bash
-./wyrmc.exe examples/hello.wyr
-```
-
-### Package Manager (`wyrpkg`)
-```bash
-# Install package
-python wyrpkg.py install my_package
-
-# List installed packages
-python wyrpkg.py list
-```
-
-### Using the REPL
-```bash
-python -m wyrm
-```
-
-### From Python code
-```python
-from wyrm import Lexer, Parser, Interpreter
-
-code = '''
-fn main() {
-    print("Hello from Wyrm!")
-}
-'''
-
-lexer = Lexer(code)
-tokens = lexer.tokenize()
-parser = Parser(tokens)
-ast = parser.parse()
-interpreter = Interpreter()
-interpreter.execute(ast)
-```
-
-## Running Tests
+Run a Wyrm program in dev/interpreted mode:
 
 ```bash
-# Run unit tests
-python -m pytest tests/ -v
-
-# Run all example programs
-python test_examples.py
+./wyrm.exe run examples/hello.wyr
 ```
 
-## Building the C VM Compiler (`wyrmc`)
+Build a Wyrm program as a native binary:
 
 ```bash
-gcc wyrmc.c -o wyrmc.exe -std=c11 -O2
+./wyrm.exe build examples/hello.wyr -o hello_native.exe
+./hello_native.exe
 ```
+
+`wyrmc.exe` remains as a compiler alias. `wyrm.exe` is the main user-facing tool.
+
+## Package Manager
+
+```bash
+./wyrpkg.exe install my_package
+./wyrpkg.exe list
+./wyrpkg.exe remove my_package
+```
+
+## Roadmap Libraries
+
+- High-performance File I/O
+- Advanced string handling
+- Comprehensive math utilities
+- OS abstraction layer
+- OS syscalls
+- Networking
+
+## GitHub Language Detection
+
+The repo marks `*.wyr` as Wyrm in `.gitattributes`. GitHub will display Wyrm in the Languages sidebar once Wyrm is registered in GitHub Linguist upstream. See `docs/github-linguist/README.md` for the suggested Linguist entry.
 
 ## Language Specification
 
-See `Docs.md` for the updated Wyrm language specification.
-
-## Roadmap to Systems Programming Language
-
-Wyrm is designed to evolve into a native systems programming language with performance close to C/C++/Rust. The memory safety model is positioned as:
-
-```
-[Most safe]   Rust   - Borrow Checker + Ownership, no raw pointers by default
-              Wyrm   - Ownership + RAII + Safe References + optional unsafe {}
-[Less safe]   C++    - RAII + Smart Pointers, but raw pointers still accessible
-```
-
-Key design goals:
-- **No Garbage Collector** - deterministic memory, suitable for real-time systems
-- **Ownership semantics** - each value has exactly one owner
-- **RAII** - resources freed automatically when leaving scope
-- **`unsafe {}` block** - opt-in for low-level hardware access
-- **Performance target**: >=90% of C for general workloads
-
-See `TODO_SYSTEM_LANGUAGE.md` for the full development roadmap.
+See `docs/Docs.md` and `fix.txt` for the current Wyrm language direction.
 
 ## License
 
-MIT License - see `LICENSE` file for details.
+MIT License - see `LICENSE`.
 
 ## Copyright
 
