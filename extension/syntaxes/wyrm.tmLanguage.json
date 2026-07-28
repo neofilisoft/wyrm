@@ -85,7 +85,7 @@
       "patterns": [
         {
           "name": "keyword.control.wyr",
-          "match": "\\b(if|elif|else|repeat|til|break|continue|return|use)\\b"
+          "match": "\\b(if|elif|else|repeat|do|til|break|continue|return|use|unsafe)\\b"
         }
       ]
     },
@@ -93,7 +93,7 @@
       "patterns": [
         {
           "name": "storage.type.wyr",
-          "match": "\\b(var|dec)\\b"
+          "match": "\\b(var|dec|owned|i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|bool|char|string)\\b"
         }
       ]
     },
@@ -128,7 +128,7 @@
       "patterns": [
         {
           "name": "support.function.builtin.wyr",
-          "match": "\\b(print|input|int|float|str|len|type|abs|max|min|round|pow|append|pop)\\b"
+          "match": "\\b(print|input|int|float|str|len|type|abs|max|min|round|pow|append|pop|open|read|write|close|malloc|free|realloc)\\b"
         }
       ]
     },
