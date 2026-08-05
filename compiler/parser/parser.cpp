@@ -66,7 +66,6 @@ std::vector<ASTNodePtr> Parser::parse() {
 
 ASTNodePtr Parser::statement() {
     if (!current_token_) return nullptr;
-    std::cout << "DEBUG statement: " << to_string(current_token_->type) << " '" << current_token_->value << "' at line " << current_token_->line << std::endl;
 
     if (current_token_->type == TokenType::KEYWORD) {
         if (current_token_->value == "use") {
@@ -120,24 +119,31 @@ ASTNodePtr Parser::use_statement() {
     std::string module_path;
 
     if (!current_token_) {
-        throw std::runtime_error("Expected module path after 'use'");
+        throw std::runtime_error("SyntaxError: Expected module path after 'use'");
     }
 
     if (current_token_->type == TokenType::STRING) {
         module_path = current_token_->value;
         advance();
     } else {
-        while (current_token_ && current_token_->type != TokenType::NEWLINE && 
-               current_token_->type != TokenType::END_OF_FILE && 
+        while (current_token_ && current_token_->type != TokenType::NEWLINE &&
+               current_token_->type != TokenType::END_OF_FILE &&
                current_token_->value != ";") {
             module_path += current_token_->value;
             advance();
         }
     }
 
-    if (current_token_ && current_token_->value == ";") {
-        advance();
+    if (!current_token_ || current_token_->value != ";") {
+        size_t err_line = current_token_ ? current_token_->line : 0;
+        size_t err_col  = current_token_ ? current_token_->column : 0;
+        throw std::runtime_error(
+            "SyntaxError: Expected ';' after 'use " + module_path + "' at line " +
+            std::to_string(err_line) + ", col " + std::to_string(err_col) +
+            ". Wyrm requires a semicolon to terminate 'use' statements."
+        );
     }
+    advance(); // consume ';'
 
     return std::make_unique<UseNode>(module_path);
 }
@@ -516,8 +522,9 @@ ASTNodePtr Parser::power() {
 }
 
 ASTNodePtr Parser::unary() {
-    if (current_token_ && (current_token_->value == "not" || current_token_->value == "!" || 
-                           current_token_->value == "-" || current_token_->value == "+")) {
+    if (current_token_ && current_token_->type == TokenType::OPERATOR && 
+        (current_token_->value == "not" || current_token_->value == "!" || 
+         current_token_->value == "-" || current_token_->value == "+")) {
         Token op = *current_token_;
         advance();
         ASTNodePtr expr = unary();
@@ -530,7 +537,6 @@ ASTNodePtr Parser::primary() {
     if (!current_token_) {
         throw std::runtime_error("Unexpected end of input");
     }
-    std::cout << "  DEBUG primary: " << to_string(current_token_->type) << " '" << current_token_->value << "' at line " << current_token_->line << std::endl;
 
     if (current_token_->type == TokenType::INT || current_token_->type == TokenType::FLOAT) {
         Token tok = *current_token_;
