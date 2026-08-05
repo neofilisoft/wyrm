@@ -18,7 +18,7 @@ std::string Transpiler::load_c_runtime() {
     } else if (const char* h = std::getenv("HOME")) {
         home_dir = h;
     }
-    std::string lib_dir = home_dir + "/.wyrm/packages/wyrmlang/wyrm/lib/";
+    std::string lib_dir = home_dir + "/.wyrm/packages/wyrmlang/lib/";
     
     std::vector<std::string> files = {
         "wyrm_core.h", "wyrm_arena.h", "wyrm_str.h",
@@ -158,13 +158,15 @@ std::string Transpiler::transpile(std::vector<ASTNodePtr>& ast) {
     final_code.insert(final_code.end(), function_lines.begin(), function_lines.end());
 
     if (has_main_def) {
-        final_code.push_back("\nint main() {");
+        final_code.push_back("\nint main(int argc, char *argv[]) {");
+        final_code.push_back("    val_init_sys_args(argc, argv);");
         final_code.insert(final_code.end(), top_level_lines.begin(), top_level_lines.end());
         final_code.push_back("    wyrm_fn_main();");
         final_code.push_back("    return 0;");
         final_code.push_back("}");
     } else {
-        final_code.push_back("\nint main() {");
+        final_code.push_back("\nint main(int argc, char *argv[]) {");
+        final_code.push_back("    val_init_sys_args(argc, argv);");
         final_code.insert(final_code.end(), top_level_lines.begin(), top_level_lines.end());
         final_code.push_back("    return 0;");
         final_code.push_back("}");
@@ -455,7 +457,7 @@ void Transpiler::visit(FunctionCallNode* node) {
 
     static const std::unordered_set<std::string> builtins = {
         "input", "len", "type", "int", "float", "str", "abs", "round", "pow",
-        "append", "pop", "malloc", "free", "realloc",
+        "append", "pop", "malloc", "free", "realloc", "sys_args", "read_file", "write_file", "exit", "system", "getenv",
         "split", "join", "trim", "upper", "lower", "contains", "replace",
         "starts_with", "ends_with", "char_at", "ord_val", "chr_val", "to_bytes", "from_bytes"
     };
