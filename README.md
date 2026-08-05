@@ -8,8 +8,8 @@ Wyrm (`.wyr`) is a static systems programming language. The main toolchain consi
 
 - Static systems language
 - AOT-first compilation strategy
-- Primary codegen and runtime path: C11
-- Native tools: `wyrmc.exe` and `wyrpkg.exe`
+- Primary codegen path: LLVM IR - native binary via Clang (v2.4+); C11 transpiler for bootstrap
+- Native tools: `wyrmc` and `wyrpkg`
 - Developer interpreter mode for quick feedback
 - `wyrpkg` package and project tool in the style of Cargo
 
@@ -25,9 +25,9 @@ Wyrm (`.wyr`) is a static systems programming language. The main toolchain consi
 - Block syntax: `{ }`
 - Loops: `do` / `til` with `repeat` / `til` alias
 - Arrays: literals, indexing, slicing, and index assignment
-- Module imports: `use module.wyr` or `use module.wyr;`
+- Module imports: `use module.wyr;` (semicolon required)
 - Comments: `//`, `/* */`, `///`
-- Optional semicolons
+- Semicolons are optional at most statement boundaries; `use` statements require a trailing `;`
 - Ownership and RAII direction with `owned`, `unsafe`, `arena` allocation, and raw memory APIs (`malloc`, `free`, `realloc`)
 - 14 built-in String & Data manipulation operations: `split`, `join`, `trim`, `upper`, `lower`, `contains`, `replace`, `starts_with`, `ends_with`, `char_at`, `ord_val`, `chr_val`, `to_bytes`, `from_bytes`
 
@@ -40,7 +40,14 @@ gcc wyrm/scr/bootstrap.c -o bootstrap.exe -std=c11 -O2
 ./bootstrap.exe
 ```
 
-The bootstrap driver will compile `wyrmc.exe` and `wyrpkg.exe` to your `~/.wyrm` directory, copy the Python runtime packages to `~/.wyrm/packages/wyrmlang/`, and add the installation folder to your User `PATH`.
+The bootstrap driver will compile the tools into a subdirectory layout and add each dir to your User `PATH`:
+
+```
+~/.wyrm/
+  wyrmc/wyrmc.exe      <- added to PATH
+  wyrpkg/wyrpkg.exe    <- added to PATH
+  packages/wyrmlang/   <- C runtime library files
+```
 
 Alternatively, you can run the PowerShell installer:
 ```powershell
@@ -79,9 +86,9 @@ wyrpkg remove my_package
 
 ## Repository Layout
 
-- `wyrm/scr/`: native sources for the bootstrap compiler (`bootstrap.c`), `wyrmc.cpp`, and `wyrpkg.c`
-- `wyrm/lib/`: standard C headers (`wyrm_core.h`, `wyrm_str.h`, `wyrm_arena.h`) linked by compiled programs
-- `wyrm/`: Python development interpreter, parser, and browser compiler source
+- `wyrm/scr/`: native bootstrap compiler (`bootstrap.c`), `wyrmc.cpp`, `wyrpkg.cpp`
+- `wyrm/lib/`: C runtime library (`wyrm_core.c/h`, `wyrm_str.c/h`, `wyrm_arena.c/h`) linked by compiled programs
+- `compiler/`: self-hosted Wyrm compiler source (`wyrmc.wyr`) and C++ bootstrap front-end (lexer, parser, interpreter, transpiler)
 - `examples/`: runnable Wyrm programs
 - `docs/Docs.md`: language specification
 - `docs/github-linguist/README.md`: suggested GitHub Linguist language entry
