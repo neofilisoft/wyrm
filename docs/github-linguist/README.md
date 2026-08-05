@@ -7,7 +7,7 @@ Suggested upstream language entry:
 ```yaml
 Wyrm:
   type: programming
-  color: "#B10C1A"
+  color: "#5B256B"
   extensions:
   - ".wyr"
   tm_scope: source.wyr
