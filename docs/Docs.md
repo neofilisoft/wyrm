@@ -6,7 +6,8 @@ This document describes the current Wyrm design implemented in the repository. T
 
 - `wyrmc` is the main user-facing tool, functioning as a compiler and runner.
 - `wyrpkg` is the package and project tool.
-- Compiled AOT native C11 execution is the primary path.
+- AOT native compilation (v2.4+) uses LLVM IR - native binary via Clang as the primary path.
+- The C11 transpiler path is used during bootstrap stage.
 - The Python implementation is kept for development interpreter, parser tests, and browser compiler support.
 
 ## Source Files
@@ -18,7 +19,8 @@ Wyrm source files use the `.wyr` extension.
 - Line comments start with `//`.
 - Block comments use `/*` and `*/`.
 - Documentation comments start with `///`.
-- Semicolons are optional at statement boundaries.
+- Semicolons are optional at most statement boundaries.
+- `use` statements require a trailing semicolon: `use module.wyr;`
 - Blocks use `{` and `}`.
 
 ## Values
@@ -100,7 +102,7 @@ fn main() {
 }
 ```
 
-Both `use module.wyr` and `use module.wyr;` are valid forms.
+`use` statements require a trailing semicolon.
 
 ## Printing And Input
 
