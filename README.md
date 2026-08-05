@@ -1,6 +1,6 @@
 # Wyrm Language
 [![License: MIT](https://img.shields.io/badge/License-MIT-333333.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-2.3.0-B10C1A)](https://github.com/neofilisoft/wyrm/releases)
+[![Version](https://img.shields.io/badge/version-2.4.0-B10C1A)](https://github.com/neofilisoft/wyrm/releases)
 
 Wyrm (`.wyr`) is a static systems programming language. The main toolchain consists of `wyrmc` (the compiler & runner) and `wyrpkg` (the package manager). The Python package remains in the repository as a development interpreter, parser test bed, and browser compiler source.
 
