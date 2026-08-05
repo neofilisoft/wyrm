@@ -17,7 +17,7 @@
 
 using namespace wyrm;
 
-int run_native_interpreter(const std::string& filename) {
+int run_native_interpreter(const std::string& filename, const std::vector<std::string>& cli_args) {
     std::ifstream file(filename);
     if (!file.good()) {
         std::cerr << "Error: Could not open file '" << filename << "'" << std::endl;
@@ -38,15 +38,10 @@ int run_native_interpreter(const std::string& filename) {
     try {
         Lexer lexer(source);
         auto tokens = lexer.tokenize();
-        for (const auto& t : tokens) {
-            if (t.line >= 8 && t.line <= 12) {
-                std::cout << "[TOKEN] Line " << t.line << " Col " << t.column << ": Type=" << (int)t.type << " Value='" << t.value << "'" << std::endl;
-            }
-        }
         Parser parser(tokens);
         auto ast = parser.parse();
 
-        Interpreter interpreter(source_dir);
+        Interpreter interpreter(source_dir, cli_args);
         interpreter.interpret(ast);
     } catch (const std::exception& e) {
         std::cerr << "Runtime Error: " << e.what() << std::endl;
@@ -110,7 +105,7 @@ int run_native_compiler(const std::string& filename) {
     int compile_res = std::system(build_cmd.c_str());
 
     // Clean up temp file
-    std::remove(temp_c_file.c_str());
+    // std::remove(temp_c_file.c_str());
 
     if (compile_res != 0) {
         std::cerr << "Compilation Error: gcc failed to compile the generated C code" << std::endl;
@@ -153,9 +148,17 @@ int main(int argc, char* argv[]) {
                 std::cerr << "Error: Please specify the file to run." << std::endl;
                 return 1;
             }
-            return run_native_interpreter(argv[2]);
+            std::vector<std::string> cli_args;
+            for (int i = 2; i < argc; ++i) {
+                cli_args.push_back(argv[i]);
+            }
+            return run_native_interpreter(argv[2], cli_args);
         } else {
-            return run_native_interpreter(argv[1]);
+            std::vector<std::string> cli_args;
+            for (int i = 1; i < argc; ++i) {
+                cli_args.push_back(argv[i]);
+            }
+            return run_native_interpreter(argv[1], cli_args);
         }
     }
 

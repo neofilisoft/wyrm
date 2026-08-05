@@ -100,29 +100,42 @@ void add_to_path(const char *install_dir) {
 
 int main(int argc, char *argv[]) {
     char exe_path[MAX_PATH];
+    char workspace[MAX_PATH];
+    char version_path[MAX_PATH];
+    char version[128];
+    char install_root[MAX_PATH];
+    char wyrmc_dir[MAX_PATH];
+    char wyrpkg_dir[MAX_PATH];
+    char packages_dest[MAX_PATH];
+    char build_cmd[8192];
+    char cmd1[4096];
+    char cmd2[4096];
+    char cmd3[4096];
+    char copy_cmd[4096];
+    char *end;
+    FILE *vf;
+    const char *user_profile;
+
     GetModuleFileNameA(NULL, exe_path, MAX_PATH);
 
-    char workspace[MAX_PATH];
     if (!find_workspace(exe_path, workspace)) {
         fprintf(stderr, "Error: Could not locate workspace root containing VERSION file.\n");
         return 1;
     }
 
-    char version_path[MAX_PATH];
     snprintf(version_path, sizeof(version_path), "%s\\VERSION", workspace);
-    FILE *vf = fopen(version_path, "r");
+    vf = fopen(version_path, "r");
     if (!vf) {
         fprintf(stderr, "Error: Failed to open VERSION file.\n");
         return 1;
     }
-    char version[128];
     if (!fgets(version, sizeof(version), vf)) {
         strcpy(version, "2.3");
     }
     fclose(vf);
 
     // Strip whitespace from version
-    char *end = version + strlen(version) - 1;
+    end = version + strlen(version) - 1;
     while (end >= version && (*end == '\r' || *end == '\n' || *end == ' ' || *end == '\t')) {
         *end = '\0';
         end--;
@@ -130,8 +143,7 @@ int main(int argc, char *argv[]) {
 
     printf("Bootstrapping Wyrm v%s from workspace: %s\n", version, workspace);
 
-    // Get USERPROFILE env var
-    const char *user_profile = getenv("USERPROFILE");
+    user_profile = getenv("USERPROFILE");
     if (!user_profile) {
         user_profile = getenv("HOME");
     }
@@ -140,29 +152,29 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    char install_root[MAX_PATH];
-    snprintf(install_root, sizeof(install_root), "%s\\.wyrm", user_profile);
-    
-    char packages_dest[MAX_PATH];
-    snprintf(packages_dest, sizeof(packages_dest), "%s\\packages\\wyrmlang", install_root);
+    snprintf(install_root,   sizeof(install_root),   "%s\\.wyrm",          user_profile);
+    snprintf(wyrmc_dir,      sizeof(wyrmc_dir),       "%s\\wyrmc",          install_root);
+    snprintf(wyrpkg_dir,     sizeof(wyrpkg_dir),      "%s\\wyrpkg",         install_root);
+    snprintf(packages_dest,  sizeof(packages_dest),   "%s\\packages\\wyrmlang", install_root);
 
     printf("Creating installation directories...\n");
-    if (!create_dir_recursive(packages_dest)) {
+    if (!create_dir_recursive(packages_dest) ||
+        !create_dir_recursive(wyrmc_dir) ||
+        !create_dir_recursive(wyrpkg_dir)) {
         fprintf(stderr, "Error: Failed to create directories under %s.\n", install_root);
         return 1;
     }
 
     printf("Compiling compiler (wyrmc) and package manager (wyrpkg)...\n");
-    char build_cmd[8192];
-    
-    char cmd1[4096];
-    snprintf(cmd1, sizeof(cmd1), "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\wyrm_core.c\" -o \"%s\\wyrm_core.o\" -I\"%s\\wyrm\\lib\"",
+
+    snprintf(cmd1, sizeof(cmd1),
+             "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\wyrm_core.c\" -o \"%s\\wyrm_core.o\" -I\"%s\\wyrm\\lib\"",
              workspace, install_root, workspace);
-    char cmd2[4096];
-    snprintf(cmd2, sizeof(cmd2), "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\wyrm_arena.c\" -o \"%s\\wyrm_arena.o\" -I\"%s\\wyrm\\lib\"",
+    snprintf(cmd2, sizeof(cmd2),
+             "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\wyrm_arena.c\" -o \"%s\\wyrm_arena.o\" -I\"%s\\wyrm\\lib\"",
              workspace, install_root, workspace);
-    char cmd3[4096];
-    snprintf(cmd3, sizeof(cmd3), "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\wyrm_str.c\" -o \"%s\\wyrm_str.o\" -I\"%s\\wyrm\\lib\"",
+    snprintf(cmd3, sizeof(cmd3),
+             "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\wyrm_str.c\" -o \"%s\\wyrm_str.o\" -I\"%s\\wyrm\\lib\"",
              workspace, install_root, workspace);
 
     if (system(cmd1) != 0 || system(cmd2) != 0 || system(cmd3) != 0) {
@@ -170,33 +182,50 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    snprintf(build_cmd, sizeof(build_cmd), 
-             "g++ -O2 -std=c++20 \"%s\\wyrm\\scr\\wyrmc.cpp\" \"%s\\compiler\\lexer\\lexer.cpp\" \"%s\\compiler\\parser\\parser.cpp\" \"%s\\compiler\\interpreter\\interpreter.cpp\" \"%s\\compiler\\interpreter\\builtins.cpp\" \"%s\\compiler\\transpiler\\transpiler.cpp\" \"%s\\wyrm_core.o\" \"%s\\wyrm_arena.o\" \"%s\\wyrm_str.o\" -o \"%s\\wyrmc.exe\" -DWYRM_VERSION=\\\"%s\\\" -DWYRMC_VERSION=\\\"%s\\\"",
-             workspace, workspace, workspace, workspace, workspace, workspace, install_root, install_root, install_root, install_root, version, version);
+    snprintf(build_cmd, sizeof(build_cmd),
+             "g++ -O2 -std=c++20"
+             " \"%s\\wyrm\\scr\\wyrmc.cpp\""
+             " \"%s\\compiler\\lexer\\lexer.cpp\""
+             " \"%s\\compiler\\parser\\parser.cpp\""
+             " \"%s\\compiler\\interpreter\\interpreter.cpp\""
+             " \"%s\\compiler\\interpreter\\builtins.cpp\""
+             " \"%s\\compiler\\transpiler\\transpiler.cpp\""
+             " \"%s\\wyrm_core.o\" \"%s\\wyrm_arena.o\" \"%s\\wyrm_str.o\""
+             " -o \"%s\\wyrmc.exe\""
+             " -DWYRM_VERSION=\\\"%s\\\" -DWYRMC_VERSION=\\\"%s\\\"",
+             workspace, workspace, workspace, workspace, workspace, workspace,
+             install_root, install_root, install_root,
+             wyrmc_dir, version, version);
     if (system(build_cmd) != 0) {
         fprintf(stderr, "Error: Failed to compile wyrmc.exe. Please ensure g++ is installed and available in PATH.\n");
         return 1;
     }
 
-    snprintf(build_cmd, sizeof(build_cmd), "g++ -O2 -std=c++20 \"%s\\wyrm\\scr\\wyrpkg.cpp\" -o \"%s\\wyrpkg.exe\" -DWYRM_VERSION=\\\"%s\\\" -DWYRPKG_VERSION=\\\"%s\\\"", 
-             workspace, install_root, version, version);
+    snprintf(build_cmd, sizeof(build_cmd),
+             "g++ -O2 -std=c++20 \"%s\\wyrm\\scr\\wyrpkg.cpp\""
+             " -o \"%s\\wyrpkg.exe\""
+             " -DWYRM_VERSION=\\\"%s\\\" -DWYRPKG_VERSION=\\\"%s\\\"",
+             workspace, wyrpkg_dir, version, version);
     if (system(build_cmd) != 0) {
         fprintf(stderr, "Error: Failed to compile wyrpkg.exe. Please ensure g++ is installed and available in PATH.\n");
         return 1;
     }
 
     printf("Copying Wyrm package runtime files...\n");
-    char copy_cmd[4096];
-    snprintf(copy_cmd, sizeof(copy_cmd), "xcopy /E /I /Y \"%s\\wyrm\" \"%s\"", workspace, packages_dest);
+    snprintf(copy_cmd, sizeof(copy_cmd),
+             "xcopy /E /I /Y \"%s\\wyrm\" \"%s\"", workspace, packages_dest);
     if (system(copy_cmd) != 0) {
         fprintf(stderr, "Warning: Package copy command returned non-zero status.\n");
     }
 
     printf("Configuring environment PATH...\n");
-    add_to_path(install_root);
+    add_to_path(wyrmc_dir);
+    add_to_path(wyrpkg_dir);
 
     printf("\nWyrm Toolchain v%s successfully bootstrapped!\n", version);
-    printf("Please restart your terminal to apply PATH changes, or run wyrmc directly from %s\n", install_root);
+    printf("  wyrmc  -> %s\\wyrmc.exe\n", wyrmc_dir);
+    printf("  wyrpkg -> %s\\wyrpkg.exe\n", wyrpkg_dir);
+    printf("Please restart your terminal to apply PATH changes.\n");
 
     return 0;
 }

@@ -4,7 +4,7 @@
 #include <stddef.h>
 
 // Arena Allocator structure
-typedef struct {
+typedef struct WyrmArena {
     char   *buf;        // raw memory block
     size_t  cap;        // total capacity in bytes
     size_t  used;       // bytes allocated so far
