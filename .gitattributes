@@ -1,4 +1,4 @@
-﻿# ============================================================
+# ============================================================
 # GitHub Linguist Configuration for Wyrm Repository
 # Goal: Wyrm (most) > C (second) > others (minor/excluded)
 # ============================================================
@@ -8,16 +8,24 @@
 *.wyr linguist-language=Wyrm
 *.wyr linguist-detectable=true
 
-# --- C files: keep as real code ---
+# --- C runtime library: keep as real code ---
 *.c linguist-language=C
-wyrmc.c linguist-detectable=true
-wyrpkg.c linguist-detectable=true
+*.c linguist-detectable=true
+wyrm/lib/wyrm_arena.c linguist-detectable=true
+wyrm/lib/wyrm_core.c linguist-detectable=true
+wyrm/lib/wyrm_str.c linguist-detectable=true
+wyrm/scr/bootstrap.c linguist-detectable=true
 
-# --- Python: mark as documentation (excludes from language bar) ---
-# These are interpreter/tooling infrastructure, not the project language
-*.py linguist-documentation=true
+# --- C++ bootstrap compiler toolchain: infrastructure, not the project language ---
+# The .cpp files are the bootstrap stage only; once Wyrm is self-hosted they become vendored.
+*.cpp linguist-vendored=true
+*.hpp linguist-vendored=true
 
-# --- HTML: vendored (heavy file wyrm.html, 47KB) ---
+# --- Python: interpreter/tooling infrastructure, not the project language ---
+*.py linguist-vendored=true
+*.py linguist-detectable=false
+
+# --- HTML: vendored (heavy file wyrm.html) ---
 *.html linguist-vendored=true
 
 # --- JavaScript: vendored ---
@@ -30,3 +38,15 @@ CMakeLists.txt linguist-vendored=true
 __pycache__/** linguist-vendored=true
 *.pyc linguist-vendored=true
 .pytest_cache/** linguist-vendored=true
+# CSS: browser demo styling, not the project language
+*.css linguist-vendored=true
+
+# JSON: editor/package metadata
+*.json linguist-vendored=true
+
+# Bytecode output
+*.wyb linguist-generated=true
+
+# Package metadata cache
+wyrmlang.egg-info/** linguist-generated=true
+

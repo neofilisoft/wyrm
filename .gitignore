@@ -10,6 +10,10 @@ dist/
 build/
 *.wyc
 *.wyb
+*.ll
+_wyrm_temp.c
+*_temp.ll
+work_write_probe.tmp
 wyrm_build/
 bin/
 obj/

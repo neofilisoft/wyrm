@@ -2,7 +2,7 @@
 
 // Simple function
 fn greet() {
-    print("Hello, World!")
+    print("Hello World")
 }
 
 // Function with parameters
@@ -17,7 +17,7 @@ fn add(a, b) {
 
 // Function that returns a value
 fn multiply(x, y) {
-    result = x * y
+    var result = x * y
     return result
 }
 
@@ -48,16 +48,16 @@ fn main() {
     greet_person("Alice")
 
     // Call function that returns a value
-    sum_result = add(5, 3)
+    var sum_result = add(5, 3)
     print("5 + 3 = " + str(sum_result))
 
-    product_result = multiply(4, 6)
+    var product_result = multiply(4, 6)
     print("4 * 6 = " + str(product_result))
 
-    abs_result = absolute_value(-10)
+    var abs_result = absolute_value(-10)
     print("|-10| = " + str(abs_result))
 
-    fact_result = factorial(5)
+    var fact_result = factorial(5)
     print("5! = " + str(fact_result))
 
     // Function parameters can be expressions

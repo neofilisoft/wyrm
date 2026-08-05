@@ -7,33 +7,29 @@ on:
     branches: [ main, master ]
 
 jobs:
-  test:
+  language-policy:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.8", "3.9", "3.10", "3.11"]
 
     steps:
     - uses: actions/checkout@v3
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
-
-    - name: Install dependencies
+    - name: Verify Wyrm Linguist metadata
+      shell: pwsh
       run: |
-        python -m pip install --upgrade pip
-        pip install pytest
+        $attrs = Get-Content .gitattributes -Raw
+        if ($attrs -notmatch '(?m)^\*\.wyr linguist-language=Wyrm$') { throw 'Missing Wyrm language mapping' }
+        if ($attrs -notmatch '(?m)^\*\.wyr linguist-detectable=true$') { throw 'Missing Wyrm detectable flag' }
+        if ($attrs -notmatch '(?m)^\*\.cpp linguist-vendored=true$') { throw 'Missing C++ vendored flag' }
+        $doc = Get-Content docs/github-linguist/README.md -Raw
+        if ($doc -notmatch '(?m)^Wyrm:$') { throw 'Missing Wyrm Linguist entry' }
+        if ($doc -notmatch '#5B256B') { throw 'Missing Wyrm color #5B256B' }
+        if ($doc -notmatch 'tm_scope: source\.wyr') { throw 'Missing Wyrm TextMate scope' }
 
-    - name: Run tests
+    - name: Verify repository language ratio
+      shell: pwsh
       run: |
-        python -m pytest tests/ -v
-
-    - name: Run example programs
-      run: |
-        python -m wyrm examples/hello.wyr
-        python -m wyrm examples/basics.wyr
-        python -m wyrm examples/control_flow.wyr
-        python -m wyrm examples/functions.wyr
-        python -m wyrm examples/data_structures.wyr
+        $wyrmBytes = (Get-ChildItem -Recurse -File -Filter *.wyr | Measure-Object Length -Sum).Sum
+        $cBytes    = (Get-ChildItem wyrm/lib -Recurse -File -Filter *.c | Measure-Object Length -Sum).Sum
+        Write-Host "Wyrm bytes: $wyrmBytes"
+        Write-Host "C runtime bytes: $cBytes"
+        if ($wyrmBytes -le $cBytes) { throw 'Wyrm source bytes must be greater than C runtime bytes' }

@@ -1,13 +1,13 @@
 // Data structures examples in Wyrm
 
 // Arrays (lists)
-numbers = [1, 2, 3, 4, 5]
+var numbers = [1, 2, 3, 4, 5]
 print("Numbers:", numbers)
 
 // Accessing elements
-first = numbers[0]
-second = numbers[1]
-last = numbers[4]  // or numbers[len(numbers)-1]
+var first = numbers[0]
+var second = numbers[1]
+var last = numbers[4]
 print("First:", first)
 print("Second:", second)
 print("Last:", last)
@@ -17,46 +17,49 @@ numbers[0] = 10
 print("Modified numbers:", numbers)
 
 // Getting length
-length = len(numbers)
+var length = len(numbers)
 print("Length:", length)
 
 // Mixed array
-mixed = [1, "hello", 3.14, true]
+var mixed = [1, "hello", 3.14, true]
 print("Mixed array:", mixed)
 
-// Strings as arrays of characters (conceptual)
-text = "Hello"
-first_char = text[0]  // Would be 'H' if implemented
+// Strings as arrays of characters
+var text = "Hello"
+var first_char = text[0]
 print("First character:", first_char)
 
 // String length
-text_len = len(text)
+var text_len = len(text)
 print("Length of text:", text_len)
 
-// Array operations (conceptual - would need to be implemented)
-// In a full implementation, we might have:
-// append(arr, item) - add item to end
-// pop(arr) - remove and return last item
-// slice(arr, start, end) - get substring/sublist
+// Array operations (built-in append and pop)
+var mylist = [10, 20]
+print("Initial list:", mylist)
+append(mylist, 30)
+print("After append:", mylist)
+var popped = pop(mylist)
+print("Popped value:", popped)
+print("After pop:", mylist)
 
 // Example of using arrays for calculations
-scores = [85, 92, 78, 96, 88]
-total = 0
-i = 0
+var scores = [85, 92, 78, 96, 88]
+var total = 0
+var idx = 0
 repeat {
-    total = total + scores[i]
-    i = i + 1
-} til (i >= len(scores))
-average = total / len(scores)
+    total = total + scores[idx]
+    idx = idx + 1
+} til (idx >= len(scores))
+var average = total / len(scores)
 print("Average score:", average)
 
 // Finding maximum in array
-max_score = scores[0]
-i = 1
+var max_score = scores[0]
+var j = 1
 repeat {
-    if scores[i] > max_score {
-        max_score = scores[i]
+    if scores[j] > max_score {
+        max_score = scores[j]
     }
-    i = i + 1
-} til (i >= len(scores))
+    j = j + 1
+} til (j >= len(scores))
 print("Maximum score: " + str(max_score))

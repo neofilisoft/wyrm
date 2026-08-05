@@ -1,7 +1,8 @@
 // Control flow examples in Wyrm
 
 // If-elif-else statement
-score = 85
+var score = 85
+var grade = "F"
 if score >= 90 {
     grade = "A"
 } elif score >= 80 {
@@ -16,39 +17,50 @@ if score >= 90 {
 print("Your grade is: " + grade)
 
 // Repeat loop (similar to do-while)
-count = 0
+var count = 0
 repeat {
     print("Count is: " + str(count))
     count = count + 1
 } til (count >= 5)
 
-// Repeat loop with break-like behavior (using condition)
-i = 0
+// Repeat loop demonstrating break statement
+var i = 0
 repeat {
     if i == 3 {
-        // Break would go here, but we'll just not increment and let condition handle it
-        // In a real implementation, we might have break/continue statements
+        print("Breaking at 3")
+        break
     }
     print("i is: " + str(i))
     i = i + 1
 } til (i >= 5)
 
-// Nested loops
-i = 0
+// Repeat loop demonstrating continue statement
+var k = 0
 repeat {
-    j = 0
+    k = k + 1
+    if k == 2 {
+        print("Skipping 2 (continue)")
+        continue
+    }
+    print("k is: " + str(k))
+} til (k >= 4)
+
+// Nested loops
+var outer = 0
+repeat {
+    var inner = 0
     repeat {
-        print("i=" + str(i) + ", j=" + str(j))
-        j = j + 1
-    } til (j >= 3)
-    i = i + 1
-} til (i >= 2)
+        print("outer=" + str(outer) + ", inner=" + str(inner))
+        inner = inner + 1
+    } til (inner >= 3)
+    outer = outer + 1
+} til (outer >= 2)
 
 // Using loops for calculation
-sum = 0
-i = 1
+var sum = 0
+var n = 1
 repeat {
-    sum = sum + i
-    i = i + 1
-} til (i > 10)
+    sum = sum + n
+    n = n + 1
+} til (n > 10)
 print("Sum of 1 to 10: " + str(sum))
