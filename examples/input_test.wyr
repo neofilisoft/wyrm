@@ -1,4 +1,0 @@
-fn main() {
-    var name = input("Enter your name: ")
-    print("Hello, " + name)
-}
