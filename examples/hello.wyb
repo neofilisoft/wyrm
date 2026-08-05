@@ -1,0 +1,1 @@
+{"instructions": [[0, 0], [7, 0]], "constants": [null], "varnames": [], "names": ["main"], "source": "// Hello World example in Wyrm\nfn main() {\n    print(\"Hello, World!\")\n}", "version": "1.0.0"}
