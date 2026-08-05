@@ -242,7 +242,7 @@ std::vector<Token> Lexer::tokenize() {
         } else if (std::isalpha(static_cast<unsigned char>(curr)) || curr == '_') {
             // Read identifier, check if it's a word operator 'and', 'or', 'not' first
             Token tok = read_identifier();
-            if (tok.type == TokenType::KEYWORD && (tok.value == "and" || tok.value == "or" || tok.value == "not")) {
+            if (tok.value == "and" || tok.value == "or" || tok.value == "not") {
                 tok.type = TokenType::OPERATOR;
             }
             tokens.push_back(std::move(tok));

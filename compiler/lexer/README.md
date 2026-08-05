@@ -49,7 +49,7 @@ The Lexer categorizes input character sequences into the following standard toke
 | `FLOAT` | `3.14`, `0.5` | Double-precision decimal floating-point literals |
 | `STRING` | `"hello"`, `'world'` | Single/double quoted string literals supporting escape chars |
 | `IDENTIFIER` | `my_var`, `funcName` | Standard identifiers containing alpha-numeric characters and underscores |
-| `KEYWORD` | `fn`, `if`, `var`, `arena` | Language reserved keywords (28 keywords recognized) |
+| `KEYWORD` | `fn`, `if`, `var`, `arena` | Language reserved keywords (24 keywords recognized) |
 | `OPERATOR` | `+`, `&&`, `==`, `+=` | Arithmetic, relational, logical, assignment, and compound operators |
 | `DELIMITER` | `(`, `}`, `;`, `.` | Syntax grouping and separation marks |
 | `NEWLINE` | `\n` | Explicit line breaks |
