@@ -8,18 +8,24 @@
 *.wyr linguist-language=Wyrm
 *.wyr linguist-detectable=true
 
-# --- C files: keep as real code ---
+# --- C runtime library: keep as real code ---
 *.c linguist-language=C
 *.c linguist-detectable=true
-wyrm/scr/wyrmc.c linguist-detectable=true
-wyrm/scr/wyrpkg.c linguist-detectable=true
+wyrm/lib/wyrm_arena.c linguist-detectable=true
+wyrm/lib/wyrm_core.c linguist-detectable=true
+wyrm/lib/wyrm_str.c linguist-detectable=true
 wyrm/scr/bootstrap.c linguist-detectable=true
+
+# --- C++ bootstrap compiler toolchain: infrastructure, not the project language ---
+# The .cpp files are the bootstrap stage only; once Wyrm is self-hosted they become vendored.
+*.cpp linguist-vendored=true
+*.hpp linguist-vendored=true
 
 # --- Python: interpreter/tooling infrastructure, not the project language ---
 *.py linguist-vendored=true
 *.py linguist-detectable=false
 
-# --- HTML: vendored (heavy file wyrm.html, 47KB) ---
+# --- HTML: vendored (heavy file wyrm.html) ---
 *.html linguist-vendored=true
 
 # --- JavaScript: vendored ---
