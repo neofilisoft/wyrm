@@ -81,8 +81,8 @@ Value BuiltinFunction::call(const std::vector<Value>& args, Interpreter* interpr
     return func(args);
 }
 
-Interpreter::Interpreter(const std::string& src_dir)
-    : global_env(std::make_shared<Environment>()), current_env(global_env), source_dir(src_dir), in_unsafe(false) {
+Interpreter::Interpreter(const std::string& src_dir, std::vector<std::string> args)
+    : global_env(std::make_shared<Environment>()), current_env(global_env), source_dir(src_dir), in_unsafe(false), cli_args(std::move(args)) {
     setup_builtins();
 }
 

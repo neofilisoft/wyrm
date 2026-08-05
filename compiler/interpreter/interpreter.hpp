@@ -60,8 +60,9 @@ public:
     std::shared_ptr<Environment> current_env;
     std::string source_dir;
     bool in_unsafe;
+    std::vector<std::string> cli_args;
 
-    Interpreter(const std::string& src_dir = ".");
+    Interpreter(const std::string& src_dir = ".", std::vector<std::string> args = {});
     ~Interpreter() override = default;
 
     void execute(std::vector<ASTNodePtr>& statements);

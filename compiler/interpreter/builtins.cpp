@@ -173,9 +173,50 @@ Value builtin_from_bytes(const std::vector<Value>& args) {
     return val_from_bytes(args[0]);
 }
 
+Value builtin_read_file(const std::vector<Value>& args) {
+    if (args.empty()) throw std::runtime_error("read_file() expects 1 argument");
+    return val_read_file(args[0]);
+}
+
+Value builtin_write_file(const std::vector<Value>& args) {
+    if (args.size() < 2) throw std::runtime_error("write_file() expects 2 arguments");
+    return val_write_file(args[0], args[1]);
+}
+
+Value builtin_exit(const std::vector<Value>& args) {
+    Value code = args.empty() ? val_number(0.0) : args[0];
+    return val_exit(code);
+}
+
+Value builtin_getenv(const std::vector<Value>& args) {
+    if (args.empty()) throw std::runtime_error("getenv() expects 1 argument");
+    return val_getenv(args[0]);
+}
+
+Value builtin_system(const std::vector<Value>& args) {
+    if (args.empty()) throw std::runtime_error("system() expects 1 argument");
+    return val_system(args[0]);
+}
+
 } // namespace
 
+class SysArgsFunction : public Callable {
+public:
+    Value call(const std::vector<Value>& args, Interpreter* interpreter) override {
+        Value arr = val_array_create(interpreter->cli_args.size());
+        for (size_t i = 0; i < interpreter->cli_args.size(); ++i) {
+            arr.as.array->data[i] = val_string(interpreter->cli_args[i].c_str());
+        }
+        return arr;
+    }
+    bool is_builtin() const override { return true; }
+};
+
 void Interpreter::setup_builtins() {
+    auto sys_args_fn = std::make_unique<SysArgsFunction>();
+    global_env->define("sys_args", val_raw_ptr(sys_args_fn.get()), true, false);
+    callables_alive_.push_back(std::move(sys_args_fn));
+
     auto register_fn = [this](const std::string& name, BuiltinFnPtr f) {
         auto fn = std::make_unique<BuiltinFunction>(name, f);
         global_env->define(name, val_raw_ptr(fn.get()), true, false);
@@ -223,6 +264,11 @@ void Interpreter::setup_builtins() {
     register_fn("chr_val", builtin_chr_val);
     register_fn("to_bytes", builtin_to_bytes);
     register_fn("from_bytes", builtin_from_bytes);
+    register_fn("read_file", builtin_read_file);
+    register_fn("write_file", builtin_write_file);
+    register_fn("exit", builtin_exit);
+    register_fn("getenv", builtin_getenv);
+    register_fn("system", builtin_system);
 }
 
 } // namespace wyrm
