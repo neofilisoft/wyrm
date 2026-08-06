@@ -2,8 +2,8 @@
   "name": "wyrm-syntax",
   "displayName": "Wyrm Language Support",
   "description": "Comprehensive syntax highlighting and configuration for the Wyrm language (.wyr)",
-  "version": "2.3.0",
-  "publisher": "neofilisoft",
+  "version": "2.4.0",
+  "publisher": "Neofilisoft",
   "engines": {
     "vscode": "^1.60.0"
   },
