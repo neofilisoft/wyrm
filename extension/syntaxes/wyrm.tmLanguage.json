@@ -31,8 +31,12 @@
       "include": "#operators"
     },
     {
+      "include": "#variables"
+    },
+    {
       "include": "#numbers"
     },
+
     {
       "include": "#punctuation"
     }
@@ -41,8 +45,17 @@
     "comments": {
       "patterns": [
         {
-          "name": "comment.line.double-slash.cpp",
+          "name": "comment.line.double-slash.documentation.wyr",
+          "match": "///.*"
+        },
+        {
+          "name": "comment.line.double-slash.wyr",
           "match": "//.*"
+        },
+        {
+          "name": "comment.block.wyr",
+          "begin": "/\\*",
+          "end": "\\*/"
         }
       ]
     },
@@ -202,6 +215,15 @@
           "match": ";"
         }
       ]
+    },
+    "variables": {
+      "patterns": [
+        {
+          "name": "variable.other.wyr",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
+        }
+      ]
     }
   }
 }
+
