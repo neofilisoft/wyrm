@@ -14,7 +14,8 @@ typedef enum {
     VAL_NUMBER,
     VAL_STRING,
     VAL_ARRAY,
-    VAL_RAW_PTR
+    VAL_RAW_PTR,
+    VAL_ERROR
 } ValueType;
 
 struct Value;
@@ -43,6 +44,8 @@ Value val_null();
 Value val_bool(bool b);
 Value val_number(double n);
 Value val_string(const char *s);
+Value val_error(const char *s);
+Value val_error_val(Value msg);
 Value val_array_create(int count);
 Value val_array_init(int count, ...);
 bool val_to_bool(Value v);
@@ -107,6 +110,7 @@ void llvm_val_null(Value *res);
 void llvm_val_bool(Value *res, bool b);
 void llvm_val_number(Value *res, double n);
 void llvm_val_string(Value *res, const char *s);
+void llvm_val_error(Value *res, const char *s);
 void llvm_val_array_create(Value *res, int count);
 void llvm_val_array_init(Value *res, int count, ...);
 bool llvm_val_to_bool(Value *v);
@@ -146,9 +150,11 @@ void llvm_val_raw_free(Value *res, Value *ptr);
 void llvm_val_raw_ptr(Value *res, void *p);
 void llvm_val_arena_reset(Value *res, WyrmArena *a);
 void llvm_val_read_file(Value *res, Value *path);
+void llvm_val_error_val(Value *res, Value *msg);
 void llvm_val_write_file(Value *res, Value *path, Value *content);
 void llvm_val_exit(Value *res, Value *code);
 void llvm_val_system(Value *res, Value *cmd);
+void llvm_val_getenv(Value *res, Value *name);
 
 // String ops wrappers
 void llvm_val_split(Value *res, Value *a, Value *b);

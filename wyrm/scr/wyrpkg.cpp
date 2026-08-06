@@ -9,7 +9,7 @@
 namespace fs = std::filesystem;
 
 #ifndef WYRPKG_VERSION
-#define WYRPKG_VERSION "2.3"
+#define WYRPKG_VERSION "2.4.0"
 #endif
 
 fs::path get_install_dir() {

@@ -29,6 +29,20 @@ Value val_string(const char *s) {
     return v;
 }
 
+Value val_error(const char *s) {
+    Value v;
+    v.type = VAL_ERROR;
+    v.as.string = strdup(s ? s : "");
+    return v;
+}
+
+Value val_error_val(Value msg) {
+    char *s = val_to_str_ptr(msg);
+    Value v = val_error(s);
+    free(s);
+    return v;
+}
+
 Value val_array_create(int count) {
     Value v;
     v.type = VAL_ARRAY;
@@ -534,7 +548,7 @@ Value val_read_file(Value path) {
     }
     FILE *f = fopen(path.as.string, "rb");
     if (!f) {
-        return val_null();
+        return val_error("Cannot open file");
     }
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
@@ -603,6 +617,7 @@ void llvm_val_null(Value *res) { *res = val_null(); }
 void llvm_val_bool(Value *res, bool b) { *res = val_bool(b); }
 void llvm_val_number(Value *res, double n) { *res = val_number(n); }
 void llvm_val_string(Value *res, const char *s) { *res = val_string(s); }
+void llvm_val_error(Value *res, const char *s) { *res = val_error(s); }
 void llvm_val_array_create(Value *res, int count) { *res = val_array_create(count); }
 void llvm_val_array_init(Value *res, int count, ...) {
     va_list args;
@@ -670,9 +685,11 @@ void llvm_val_raw_ptr(Value *res, void *p) { *res = val_raw_ptr(p); }
 void llvm_val_arena_reset(Value *res, WyrmArena *a) { *res = val_arena_reset(a); }
 
 void llvm_val_read_file(Value *res, Value *path) { *res = val_read_file(*path); }
+void llvm_val_error_val(Value *res, Value *msg) { *res = val_error_val(*msg); }
 void llvm_val_write_file(Value *res, Value *path, Value *content) { *res = val_write_file(*path, *content); }
 void llvm_val_exit(Value *res, Value *code) { *res = val_exit(*code); }
 void llvm_val_system(Value *res, Value *cmd) { *res = val_system(*cmd); }
+void llvm_val_getenv(Value *res, Value *name) { *res = val_getenv(*name); }
 
 // String ops wrappers
 void llvm_val_split(Value *res, Value *a, Value *b) { *res = val_split(*a, *b); }
