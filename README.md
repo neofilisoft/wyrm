@@ -17,6 +17,7 @@ Wyrm (`.wyr`) is a static systems programming language. The main toolchain consi
 
 - Function declarations with `fn`
 - Static primitive types: `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `f32`, `f64`, `bool`, `char`, `string`
+- Variables: `x = 1` (implicit) or `var x = 1` (explicit, optional); `dec` for constants
 - Boolean values: `true` / `false`
 - Empty value: `null`
 - Logical operators: `&&`, `||`, `!` with aliases `and`, `or`, `not`
@@ -28,8 +29,9 @@ Wyrm (`.wyr`) is a static systems programming language. The main toolchain consi
 - Module imports: `use module.wyr;` (semicolon required)
 - Comments: `//`, `/* */`, `///`
 - Semicolons are optional at most statement boundaries; `use` statements require a trailing `;`
+- `fn main()` is the program entry point and is called automatically (like C)
 - Ownership and RAII direction with `owned`, `unsafe`, `arena` allocation, and raw memory APIs (`malloc`, `free`, `realloc`)
-- 14 built-in String & Data manipulation operations: `split`, `join`, `trim`, `upper`, `lower`, `contains`, `replace`, `starts_with`, `ends_with`, `char_at`, `ord_val`, `chr_val`, `to_bytes`, `from_bytes`
+- 15 built-in type conversion and string operations: `str`, `split`, `join`, `trim`, `upper`, `lower`, `contains`, `replace`, `starts_with`, `ends_with`, `char_at`, `ord_val`, `chr_val`, `to_bytes`, `from_bytes`
 
 ## Native Toolchain & Bootstrap
 

@@ -17,11 +17,11 @@ jobs:
       shell: pwsh
       run: |
         $attrs = Get-Content .gitattributes -Raw
-        if ($attrs -notmatch '(?m)^\*\.wyr linguist-language=Wyrm$') { throw 'Missing Wyrm language mapping' }
-        if ($attrs -notmatch '(?m)^\*\.wyr linguist-detectable=true$') { throw 'Missing Wyrm detectable flag' }
-        if ($attrs -notmatch '(?m)^\*\.cpp linguist-vendored=true$') { throw 'Missing C++ vendored flag' }
+        if ($attrs -notmatch '(?m)^\*\.wyr linguist-language=Wyrm\r?$') { throw 'Missing Wyrm language mapping' }
+        if ($attrs -notmatch '(?m)^\*\.wyr linguist-detectable=true\r?$') { throw 'Missing Wyrm detectable flag' }
+        if ($attrs -notmatch '(?m)^\*\.cpp linguist-vendored=true\r?$') { throw 'Missing C++ vendored flag' }
         $doc = Get-Content docs/github-linguist/README.md -Raw
-        if ($doc -notmatch '(?m)^Wyrm:$') { throw 'Missing Wyrm Linguist entry' }
+        if ($doc -notmatch '(?m)^Wyrm:\r?$') { throw 'Missing Wyrm Linguist entry' }
         if ($doc -notmatch '#5B256B') { throw 'Missing Wyrm color #5B256B' }
         if ($doc -notmatch 'tm_scope: source\.wyr') { throw 'Missing Wyrm TextMate scope' }
 

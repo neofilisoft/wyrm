@@ -31,6 +31,17 @@ Wyrm source files use the `.wyr` extension.
 - Strings use quotes.
 - Arrays use bracket literals such as `[1, 2, 3]`.
 
+## Variables
+
+Variables are assigned with `=`. The `var` keyword is optional and may be used for clarity.
+
+```wyrm
+x = 10
+var y = 20   // same effect
+```
+
+The `dec` keyword declares a constant (immutable) binding.
+
 ## Operators
 
 - Logical operators: `&&`, `||`, `!`
@@ -41,7 +52,7 @@ Wyrm source files use the `.wyr` extension.
 
 ## Functions
 
-Functions are declared with `fn`.
+Functions are declared with `fn`. If a `fn main()` function is defined, it is called automatically as the program entry point (similar to C). Top-level statements outside any function also execute in order.
 
 ```wyrm
 fn add(a, b) {
@@ -143,6 +154,7 @@ p = buf.alloc(64)
 
 Wyrm provides 14 built-in operations for string and data manipulation:
 
+- `str(x)`: Converts any value to its string representation.
 - `split(s, sep)`: Splits string `s` by separator `sep`, returning an array of strings.
 - `join(sep, lst)`: Joins array of strings `lst` with separator `sep`, returning a string.
 - `trim(s)`: Strips leading and trailing whitespace from string `s`.

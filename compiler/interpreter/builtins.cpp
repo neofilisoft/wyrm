@@ -203,6 +203,7 @@ Value builtin_system(const std::vector<Value>& args) {
 class SysArgsFunction : public Callable {
 public:
     Value call(const std::vector<Value>& args, Interpreter* interpreter) override {
+        (void)args;
         Value arr = val_array_create(interpreter->cli_args.size());
         for (size_t i = 0; i < interpreter->cli_args.size(); ++i) {
             arr.as.array->data[i] = val_string(interpreter->cli_args[i].c_str());

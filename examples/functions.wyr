@@ -63,6 +63,3 @@ fn main() {
     // Function parameters can be expressions
     print("3 * 4 + 2 = " + str(multiply(3, 4) + 2))
 }
-
-// Call main function
-main()

@@ -138,7 +138,7 @@ void test_operators() {
         }
     }
 
-    assert(op_count == 11);
+    assert(op_count == 14);
     std::cout << "test_operators passed!" << std::endl;
 }
 
