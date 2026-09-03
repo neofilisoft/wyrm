@@ -1,4 +1,5 @@
 #include "wyrm_arena.h"
+#include "wyrm_core.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,9 +8,9 @@
 
 WyrmArena *arena_create(size_t cap) {
     WyrmArena *a = (WyrmArena*)malloc(sizeof(WyrmArena));
-    if (!a) { fprintf(stderr, "Out of memory\n"); exit(1); }
+    wyrm_check_oom(a, "arena_create (WyrmArena struct)");
     a->buf   = (char*)malloc(cap);
-    if (!a->buf) { fprintf(stderr, "Out of memory\n"); exit(1); }
+    wyrm_check_oom(a->buf, "arena_create (arena buffer)");
     a->cap   = cap;
     a->used  = 0;
     a->freed = 0;
@@ -17,8 +18,12 @@ WyrmArena *arena_create(size_t cap) {
 }
 
 void *arena_alloc(WyrmArena *a, size_t sz) {
-    if (!a || a->freed) {
-        fprintf(stderr, "Runtime Error: arena_alloc() on freed/null arena\n");
+    if (!a) {
+        fprintf(stderr, "Runtime Error: arena_alloc() on null arena\n");
+        exit(1);
+    }
+    if (a->freed) {
+        fprintf(stderr, "Runtime Error: arena_alloc() on destroyed arena\n");
         exit(1);
     }
     // Align to 8 bytes
@@ -36,12 +41,15 @@ void *arena_alloc(WyrmArena *a, size_t sz) {
 void arena_reset(WyrmArena *a) {
     if (!a) return;
     a->used  = 0;
-    a->freed = 1;  // prevent further alloc() without reinit
+    a->freed = 0;  // allow reuse after reset
 }
 
 void arena_destroy(WyrmArena *a) {
     if (!a) return;
     free(a->buf);
+    a->buf   = NULL;
+    a->used  = 0;
+    a->freed = 1;  // mark destroyed before freeing struct
     free(a);
 }
 

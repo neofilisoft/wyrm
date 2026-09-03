@@ -12,7 +12,7 @@
 #include "../../compiler/transpiler/transpiler.hpp"
 
 #ifndef WYRMC_VERSION
-#define WYRMC_VERSION "2.4.0"
+#define WYRMC_VERSION "2.4.1"
 #endif
 
 using namespace wyrm;

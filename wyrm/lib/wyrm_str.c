@@ -34,7 +34,7 @@ Value val_split(Value s, Value sep) {
         while ((match = strstr(start, delim)) != NULL) {
             size_t part_len = (size_t)(match - start);
             char *buf = malloc(part_len + 1);
-            if (!buf) { fprintf(stderr, "Out of memory\n"); exit(1); }
+            wyrm_check_oom(buf, "val_split (split substring buffer)");
             memcpy(buf, start, part_len);
             buf[part_len] = '\0';
             arr.as.array->data[idx++] = val_string(buf);
@@ -57,7 +57,7 @@ Value val_join(Value sep, Value lst) {
     }
     
     char **strs = malloc((size_t)count * sizeof(char*));
-    if (!strs) { fprintf(stderr, "Out of memory\n"); exit(1); }
+    wyrm_check_oom(strs, "val_join (temp strings array)");
     size_t total_len = 0;
     for (int i = 0; i < count; i++) {
         strs[i] = val_to_str_ptr(lst.as.array->data[i]);
@@ -68,7 +68,7 @@ Value val_join(Value sep, Value lst) {
     total_len += sep_len * (size_t)(count - 1);
     
     char *res = malloc(total_len + 1);
-    if (!res) { fprintf(stderr, "Out of memory\n"); exit(1); }
+    wyrm_check_oom(res, "val_join (joined result string)");
     res[0] = '\0';
     
     for (int i = 0; i < count; i++) {
@@ -99,7 +99,7 @@ Value val_trim(Value s) {
         len--;
     }
     char *buf = malloc(len + 1);
-    if (!buf) { fprintf(stderr, "Out of memory\n"); exit(1); }
+    wyrm_check_oom(buf, "val_trim (trim result buffer)");
     memcpy(buf, start, len);
     buf[len] = '\0';
     Value val = val_string(buf);
@@ -114,7 +114,7 @@ Value val_upper(Value s) {
     }
     size_t len = strlen(s.as.string);
     char *buf = malloc(len + 1);
-    if (!buf) { fprintf(stderr, "Out of memory\n"); exit(1); }
+    wyrm_check_oom(buf, "val_upper (upper result buffer)");
     for (size_t i = 0; i < len; i++) {
         unsigned char c = (unsigned char)s.as.string[i];
         if (c >= 'a' && c <= 'z') {
@@ -136,7 +136,7 @@ Value val_lower(Value s) {
     }
     size_t len = strlen(s.as.string);
     char *buf = malloc(len + 1);
-    if (!buf) { fprintf(stderr, "Out of memory\n"); exit(1); }
+    wyrm_check_oom(buf, "val_lower (lower result buffer)");
     for (size_t i = 0; i < len; i++) {
         unsigned char c = (unsigned char)s.as.string[i];
         if (c >= 'A' && c <= 'Z') {
@@ -181,9 +181,16 @@ Value val_replace(Value s, Value old, Value sub_new) {
         temp += old_len;
     }
     
-    size_t total_len = strlen(str) + (new_len - old_len) * (size_t)count;
+    // Use careful arithmetic to avoid unsigned underflow when new_len < old_len
+    size_t base_len = strlen(str);
+    size_t total_len;
+    if (new_len >= old_len) {
+        total_len = base_len + (new_len - old_len) * (size_t)count;
+    } else {
+        total_len = base_len - (old_len - new_len) * (size_t)count;
+    }
     char *res = malloc(total_len + 1);
-    if (!res) { fprintf(stderr, "Out of memory\n"); exit(1); }
+    wyrm_check_oom(res, "val_replace (replace result buffer)");
     
     const char *start = str;
     const char *match;
@@ -290,7 +297,7 @@ Value val_from_bytes(Value lst) {
     }
     int len = lst.as.array->size;
     char *buf = malloc((size_t)len + 1);
-    if (!buf) { fprintf(stderr, "Out of memory\n"); exit(1); }
+    wyrm_check_oom(buf, "val_from_bytes (byte construction buffer)");
     for (int i = 0; i < len; i++) {
         Value val = lst.as.array->data[i];
         if (val.type != VAL_NUMBER) {

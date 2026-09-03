@@ -130,7 +130,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     if (!fgets(version, sizeof(version), vf)) {
-        strcpy(version, "2.4.0");
+        strcpy(version, "2.4.1");
     }
     fclose(vf);
 
@@ -168,16 +168,24 @@ int main(int argc, char *argv[]) {
     printf("Compiling compiler (wyrmc) and package manager (wyrpkg)...\n");
 
     snprintf(cmd1, sizeof(cmd1),
-             "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\wyrm_core.c\" -o \"%s\\wyrm_core.o\" -I\"%s\\wyrm\\lib\"",
-             workspace, install_root, workspace);
-    snprintf(cmd2, sizeof(cmd2),
-             "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\wyrm_arena.c\" -o \"%s\\wyrm_arena.o\" -I\"%s\\wyrm\\lib\"",
-             workspace, install_root, workspace);
-    snprintf(cmd3, sizeof(cmd3),
-             "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\wyrm_str.c\" -o \"%s\\wyrm_str.o\" -I\"%s\\wyrm\\lib\"",
+             "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\wyrm_core.c\" -o \"%s\\wyrm_core.o\" -I\"%s\\wyrm\\lib\" && "
+             "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\wyrm_arena.c\" -o \"%s\\wyrm_arena.o\" -I\"%s\\wyrm\\lib\" && "
+             "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\wyrm_str.c\" -o \"%s\\wyrm_str.o\" -I\"%s\\wyrm\\lib\" && "
+             "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\wyrm_ffi.c\" -o \"%s\\wyrm_ffi.o\" -I\"%s\\wyrm\\lib\" && "
+             "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\stdlib\\wyrm_std_json.c\" -o \"%s\\wyrm_std_json.o\" -I\"%s\\wyrm\\lib\" && "
+             "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\stdlib\\wyrm_std_yaml.c\" -o \"%s\\wyrm_std_yaml.o\" -I\"%s\\wyrm\\lib\" && "
+             "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\stdlib\\wyrm_std_sdl.c\" -o \"%s\\wyrm_std_sdl.o\" -I\"%s\\wyrm\\lib\" && "
+             "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\stdlib\\wyrm_std_collections.c\" -o \"%s\\wyrm_std_collections.o\" -I\"%s\\wyrm\\lib\"",
+             workspace, install_root, workspace,
+             workspace, install_root, workspace,
+             workspace, install_root, workspace,
+             workspace, install_root, workspace,
+             workspace, install_root, workspace,
+             workspace, install_root, workspace,
+             workspace, install_root, workspace,
              workspace, install_root, workspace);
 
-    if (system(cmd1) != 0 || system(cmd2) != 0 || system(cmd3) != 0) {
+    if (system(cmd1) != 0) {
         fprintf(stderr, "Error: Failed to compile C runtime objects.\n");
         return 1;
     }
@@ -189,12 +197,17 @@ int main(int argc, char *argv[]) {
              " \"%s\\compiler\\parser\\parser.cpp\""
              " \"%s\\compiler\\interpreter\\interpreter.cpp\""
              " \"%s\\compiler\\interpreter\\builtins.cpp\""
+             " \"%s\\compiler\\interpreter\\stdlib_setup.cpp\""
              " \"%s\\compiler\\transpiler\\transpiler.cpp\""
              " \"%s\\wyrm_core.o\" \"%s\\wyrm_arena.o\" \"%s\\wyrm_str.o\""
+             " \"%s\\wyrm_ffi.o\" \"%s\\wyrm_std_json.o\" \"%s\\wyrm_std_yaml.o\""
+             " \"%s\\wyrm_std_sdl.o\" \"%s\\wyrm_std_collections.o\""
              " -o \"%s\\wyrmc.exe\""
              " -DWYRM_VERSION=\\\"%s\\\" -DWYRMC_VERSION=\\\"%s\\\"",
-             workspace, workspace, workspace, workspace, workspace, workspace,
+             workspace, workspace, workspace, workspace, workspace, workspace, workspace,
              install_root, install_root, install_root,
+             install_root, install_root, install_root,
+             install_root, install_root,
              wyrmc_dir, version, version);
     if (system(build_cmd) != 0) {
         fprintf(stderr, "Error: Failed to compile wyrmc.exe. Please ensure g++ is installed and available in PATH.\n");

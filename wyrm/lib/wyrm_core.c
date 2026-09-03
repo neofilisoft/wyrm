@@ -2,6 +2,13 @@
 #include "wyrm_arena.h"
 #include "wyrm_str.h"
 
+void wyrm_check_oom(void *ptr, const char *context) {
+    if (!ptr) {
+        fprintf(stderr, "Fatal Runtime Error: Out of memory (allocation failed in %s)\n", context);
+        exit(1);
+    }
+}
+
 Value val_null() {
     Value v;
     v.type = VAL_NULL;
@@ -47,12 +54,16 @@ Value val_array_create(int count) {
     Value v;
     v.type = VAL_ARRAY;
     v.as.array = (ValArray*)malloc(sizeof(ValArray));
-    if (!v.as.array) { fprintf(stderr, "Out of memory\n"); exit(1); }
+    wyrm_check_oom(v.as.array, "val_array_create (ValArray struct)");
     v.as.array->size = count;
     v.as.array->capacity = count > 0 ? count : 0;
     if (count > 0) {
         v.as.array->data = (Value*)malloc((size_t)count * sizeof(Value));
-        if (!v.as.array->data) { fprintf(stderr, "Out of memory\n"); exit(1); }
+        wyrm_check_oom(v.as.array->data, "val_array_create (array data)");
+        // Initialize all elements to null to prevent reading garbage memory
+        for (int i = 0; i < count; i++) {
+            v.as.array->data[i].type = VAL_NULL;
+        }
     } else {
         v.as.array->data = NULL;
     }
@@ -80,6 +91,7 @@ bool val_to_bool(Value v) {
         case VAL_STRING: return strlen(v.as.string) > 0;
         case VAL_ARRAY: return v.as.array->size > 0;
         case VAL_RAW_PTR: return v.as.raw_ptr != NULL;
+        case VAL_ERROR: return false;
     }
     return false;
 }
@@ -101,16 +113,19 @@ char* val_to_str_ptr(Value v) {
                 snprintf(buf, sizeof(buf), "%g", v.as.number);
             }
             return strdup(buf);
-        case VAL_STRING: return strdup(v.as.string);
+        case VAL_STRING: return strdup(v.as.string ? v.as.string : "");
+        case VAL_ERROR: return strdup(v.as.string ? v.as.string : "");
         case VAL_ARRAY: {
             int cap = 256;
             char *res = malloc(cap);
+            wyrm_check_oom(res, "val_to_str_ptr (array formatting buffer)");
             strcpy(res, "[");
             for (int i = 0; i < v.as.array->size; i++) {
                 char *item_str = val_to_str_ptr(v.as.array->data[i]);
                 if ((int)(strlen(res) + strlen(item_str) + 4) > cap) {
                     cap = cap * 2 + strlen(item_str);
                     res = realloc(res, cap);
+                    wyrm_check_oom(res, "val_to_str_ptr (array formatting buffer reallocation)");
                 }
                 strcat(res, item_str);
                 free(item_str);
@@ -119,6 +134,33 @@ char* val_to_str_ptr(Value v) {
                 }
             }
             strcat(res, "]");
+            return res;
+        }
+        case VAL_STRUCT: {
+            if (!v.as.structure) return strdup("<struct null>");
+            WyrmStruct *st = v.as.structure;
+            int cap = 256;
+            char *res = malloc(cap);
+            wyrm_check_oom(res, "val_to_str_ptr (struct formatting buffer)");
+            snprintf(res, cap, "%s { ", st->type_name ? st->type_name : "Struct");
+            for (int i = 0; i < st->field_count; i++) {
+                char *item_str = val_to_str_ptr(st->fields[i]);
+                const char *fname = st->field_names && st->field_names[i] ? st->field_names[i] : "";
+                int need = (int)(strlen(res) + strlen(fname) + strlen(item_str) + 8);
+                if (need > cap) {
+                    cap = need * 2;
+                    res = realloc(res, cap);
+                    wyrm_check_oom(res, "val_to_str_ptr (struct formatting buffer reallocation)");
+                }
+                strcat(res, fname);
+                strcat(res, ": ");
+                strcat(res, item_str);
+                free(item_str);
+                if (i < st->field_count - 1) {
+                    strcat(res, ", ");
+                }
+            }
+            strcat(res, " }");
             return res;
         }
     }
@@ -175,6 +217,7 @@ Value val_type(Value v) {
         case VAL_STRING: return val_string("string");
         case VAL_ARRAY: return val_string("array");
         case VAL_RAW_PTR: return val_string("raw_ptr");
+        case VAL_ERROR: return val_string("error");
     }
     return val_string("unknown");
 }
@@ -182,8 +225,16 @@ Value val_type(Value v) {
 Value val_int(Value v) {
     if (v.type == VAL_NUMBER) {
         return val_number(floor(v.as.number));
+    } else if (v.type == VAL_BOOL) {
+        return val_number(v.as.boolean ? 1.0 : 0.0);
     } else if (v.type == VAL_STRING) {
-        return val_number(atof(v.as.string));
+        char *end = NULL;
+        double result = strtod(v.as.string, &end);
+        if (end == v.as.string || *end != '\0') {
+            fprintf(stderr, "Runtime Error: int() cannot convert string to a number: '%s'\n", v.as.string);
+            exit(1);
+        }
+        return val_number(floor(result));
     }
     return val_number(0.0);
 }
@@ -191,8 +242,16 @@ Value val_int(Value v) {
 Value val_float(Value v) {
     if (v.type == VAL_NUMBER) {
         return v;
+    } else if (v.type == VAL_BOOL) {
+        return val_number(v.as.boolean ? 1.0 : 0.0);
     } else if (v.type == VAL_STRING) {
-        return val_number(atof(v.as.string));
+        char *end = NULL;
+        double result = strtod(v.as.string, &end);
+        if (end == v.as.string || *end != '\0') {
+            fprintf(stderr, "Runtime Error: float() cannot convert string to a number: '%s'\n", v.as.string);
+            exit(1);
+        }
+        return val_number(result);
     }
     return val_number(0.0);
 }
@@ -225,6 +284,36 @@ Value val_pow(Value x, Value y) {
     return val_number(0.0);
 }
 
+Value val_min(int count, ...) {
+    if (count <= 0) return val_null();
+    va_list args;
+    va_start(args, count);
+    Value lowest = va_arg(args, Value);
+    for (int i = 1; i < count; i++) {
+        Value v = va_arg(args, Value);
+        if (val_to_bool(val_lt(v, lowest))) {
+            lowest = v;
+        }
+    }
+    va_end(args);
+    return lowest;
+}
+
+Value val_max(int count, ...) {
+    if (count <= 0) return val_null();
+    va_list args;
+    va_start(args, count);
+    Value highest = va_arg(args, Value);
+    for (int i = 1; i < count; i++) {
+        Value v = va_arg(args, Value);
+        if (val_to_bool(val_gt(v, highest))) {
+            highest = v;
+        }
+    }
+    va_end(args);
+    return highest;
+}
+
 Value val_add(Value a, Value b) {
     if (a.type == VAL_NUMBER && b.type == VAL_NUMBER) {
         return val_number(a.as.number + b.as.number);
@@ -232,6 +321,7 @@ Value val_add(Value a, Value b) {
     char *s1 = val_to_str_ptr(a);
     char *s2 = val_to_str_ptr(b);
     char *res = malloc(strlen(s1) + strlen(s2) + 1);
+    wyrm_check_oom(res, "val_add (string concatenation)");
     strcpy(res, s1);
     strcat(res, s2);
     Value val = val_string(res);
@@ -286,6 +376,7 @@ Value val_eq(Value a, Value b) {
         case VAL_STRING: return val_bool(strcmp(a.as.string, b.as.string) == 0);
         case VAL_ARRAY: return val_bool(a.as.array == b.as.array);
         case VAL_RAW_PTR: return val_bool(a.as.raw_ptr == b.as.raw_ptr);
+        case VAL_ERROR: return val_bool(strcmp(a.as.string, b.as.string) == 0);
     }
     return val_bool(false);
 }
@@ -335,6 +426,14 @@ Value val_not(Value a) {
 }
 
 Value val_array_get(Value arr, Value index) {
+    if (index.type != VAL_NUMBER) {
+        fprintf(stderr, "Runtime Error: Array/string index must be a number, got type '%s'\n",
+                index.type == VAL_STRING ? "string" :
+                index.type == VAL_BOOL   ? "bool"   :
+                index.type == VAL_NULL   ? "null"   :
+                index.type == VAL_ARRAY  ? "array"  : "unknown");
+        exit(1);
+    }
     int idx = (int)index.as.number;
     if (arr.type == VAL_STRING) {
         int len = strlen(arr.as.string);
@@ -364,6 +463,14 @@ Value val_array_set(Value arr, Value index, Value val) {
         fprintf(stderr, "Runtime Error: Object is not subscriptable\n");
         exit(1);
     }
+    if (index.type != VAL_NUMBER) {
+        fprintf(stderr, "Runtime Error: Array index must be a number, got type '%s'\n",
+                index.type == VAL_STRING ? "string" :
+                index.type == VAL_BOOL   ? "bool"   :
+                index.type == VAL_NULL   ? "null"   :
+                index.type == VAL_ARRAY  ? "array"  : "unknown");
+        exit(1);
+    }
     int idx = (int)index.as.number;
     int len = arr.as.array->size;
     if (idx < 0) idx += len;
@@ -371,6 +478,7 @@ Value val_array_set(Value arr, Value index, Value val) {
         fprintf(stderr, "Runtime Error: Array index out of bounds: %d\n", idx);
         exit(1);
     }
+    val_drop(arr.as.array->data[idx]); // free the old element before overwriting
     arr.as.array->data[idx] = val;
     return val;
 }
@@ -389,21 +497,27 @@ Value val_array_slice(Value arr, Value start, Value end) {
     int s_idx = 0;
     if (start.type == VAL_NULL) {
         s_idx = 0;
-    } else {
+    } else if (start.type == VAL_NUMBER) {
         s_idx = (int)start.as.number;
         if (s_idx < 0) s_idx += len;
         if (s_idx < 0) s_idx = 0;
         if (s_idx > len) s_idx = len;
+    } else {
+        fprintf(stderr, "Runtime Error: Slice start index must be a number or null\n");
+        exit(1);
     }
 
     int e_idx = len;
     if (end.type == VAL_NULL) {
         e_idx = len;
-    } else {
+    } else if (end.type == VAL_NUMBER) {
         e_idx = (int)end.as.number;
         if (e_idx < 0) e_idx += len;
         if (e_idx < 0) e_idx = 0;
         if (e_idx > len) e_idx = len;
+    } else {
+        fprintf(stderr, "Runtime Error: Slice end index must be a number or null\n");
+        exit(1);
     }
 
     if (arr.type == VAL_STRING) {
@@ -412,6 +526,7 @@ Value val_array_slice(Value arr, Value start, Value end) {
         }
         int slice_len = e_idx - s_idx;
         char *buf = malloc(slice_len + 1);
+        wyrm_check_oom(buf, "val_array_slice (string slice buffer)");
         memcpy(buf, arr.as.string + s_idx, slice_len);
         buf[slice_len] = '\0';
         Value res = val_string(buf);
@@ -424,10 +539,153 @@ Value val_array_slice(Value arr, Value start, Value end) {
         int slice_len = e_idx - s_idx;
         Value res = val_array_create(slice_len);
         for (int i = 0; i < slice_len; i++) {
-            res.as.array->data[i] = arr.as.array->data[s_idx + i];
+            res.as.array->data[i] = val_copy(arr.as.array->data[s_idx + i]);
         }
         return res;
     }
+}
+
+// -------------------------------------------------------------------------
+// val_drop: Destructor for a Value. Frees all heap-allocated resources.
+// The caller must pass a Value it owns. No-op for scalar types.
+// -------------------------------------------------------------------------
+void val_drop(Value v) {
+    switch (v.type) {
+        case VAL_STRING:
+        case VAL_ERROR:
+            free(v.as.string);
+            break;
+        case VAL_ARRAY:
+            if (v.as.array) {
+                // Recursively drop every element the array owns
+                for (int i = 0; i < v.as.array->size; i++) {
+                    val_drop(v.as.array->data[i]);
+                }
+                free(v.as.array->data);
+                free(v.as.array);
+            }
+            break;
+        case VAL_STRUCT:
+            if (v.as.structure) {
+                WyrmStruct *st = v.as.structure;
+                st->ref_count--;
+                if (st->ref_count <= 0) {
+                    if (st->fields) {
+                        for (int i = 0; i < st->field_count; i++) {
+                            val_drop(st->fields[i]);
+                        }
+                        free(st->fields);
+                    }
+                    if (st->field_names) {
+                        for (int i = 0; i < st->field_count; i++) {
+                            if (st->field_names[i]) free(st->field_names[i]);
+                        }
+                        free(st->field_names);
+                    }
+                    if (st->type_name) {
+                        free(st->type_name);
+                    }
+                    free(st);
+                }
+            }
+            break;
+        case VAL_NULL:
+        case VAL_BOOL:
+        case VAL_NUMBER:
+        case VAL_RAW_PTR:
+            // Scalar types have no heap allocation managed by this runtime
+            break;
+    }
+}
+
+// -------------------------------------------------------------------------
+// val_copy: Deep copy a Value. Returns a new independently owned Value.
+// The caller is responsible for calling val_drop on the returned Value.
+// -------------------------------------------------------------------------
+Value val_copy(Value v) {
+    switch (v.type) {
+        case VAL_STRING:
+            return val_string(v.as.string ? v.as.string : "");
+        case VAL_ERROR:
+            return val_error(v.as.string ? v.as.string : "");
+        case VAL_ARRAY: {
+            if (!v.as.array) return val_array_create(0);
+            Value copy = val_array_create(v.as.array->size);
+            for (int i = 0; i < v.as.array->size; i++) {
+                copy.as.array->data[i] = val_copy(v.as.array->data[i]);
+            }
+            return copy;
+        }
+        case VAL_STRUCT: {
+            if (!v.as.structure) return val_null();
+            v.as.structure->ref_count++;
+            return v;
+        }
+        case VAL_NULL:
+        case VAL_BOOL:
+        case VAL_NUMBER:
+        case VAL_RAW_PTR:
+        default:
+            return v; // Scalar types are trivially copied by value
+    }
+}
+
+// -------------------------------------------------------------------------
+// Struct Operations
+// -------------------------------------------------------------------------
+Value val_struct_create(const char *type_name, int field_count, const char **field_names, const Value *initial_fields) {
+    WyrmStruct *s = (WyrmStruct *)malloc(sizeof(WyrmStruct));
+    wyrm_check_oom(s, "val_struct_create (struct header)");
+    s->type_name = strdup(type_name ? type_name : "Struct");
+    wyrm_check_oom(s->type_name, "val_struct_create (type_name)");
+    s->field_count = field_count;
+    s->ref_count = 1;
+    if (field_count > 0) {
+        s->field_names = (char **)malloc(sizeof(char *) * (size_t)field_count);
+        wyrm_check_oom(s->field_names, "val_struct_create (field_names)");
+        s->fields = (Value *)malloc(sizeof(Value) * (size_t)field_count);
+        wyrm_check_oom(s->fields, "val_struct_create (fields)");
+        for (int i = 0; i < field_count; i++) {
+            s->field_names[i] = strdup(field_names && field_names[i] ? field_names[i] : "");
+            wyrm_check_oom(s->field_names[i], "val_struct_create (field_name string)");
+            s->fields[i] = initial_fields ? initial_fields[i] : val_null();
+        }
+    } else {
+        s->field_names = NULL;
+        s->fields = NULL;
+    }
+    Value res;
+    res.type = VAL_STRUCT;
+    res.as.structure = s;
+    return res;
+}
+
+Value val_struct_get(Value s, const char *field_name) {
+    if (s.type != VAL_STRUCT || !s.as.structure || !field_name) {
+        return val_null();
+    }
+    WyrmStruct *st = s.as.structure;
+    for (int i = 0; i < st->field_count; i++) {
+        if (st->field_names[i] && strcmp(st->field_names[i], field_name) == 0) {
+            return val_copy(st->fields[i]);
+        }
+    }
+    return val_null();
+}
+
+Value val_struct_set(Value s, const char *field_name, Value new_val) {
+    if (s.type != VAL_STRUCT || !s.as.structure || !field_name) {
+        return s;
+    }
+    WyrmStruct *st = s.as.structure;
+    for (int i = 0; i < st->field_count; i++) {
+        if (st->field_names[i] && strcmp(st->field_names[i], field_name) == 0) {
+            val_drop(st->fields[i]);
+            st->fields[i] = val_copy(new_val);
+            return s;
+        }
+    }
+    return s;
 }
 
 Value val_floordiv(Value a, Value b) {
@@ -448,7 +706,9 @@ Value val_array_append(Value arr, Value item) {
     }
     if (arr.as.array->size >= arr.as.array->capacity) {
         int new_cap = arr.as.array->capacity == 0 ? 8 : arr.as.array->capacity * 2;
-        arr.as.array->data = realloc(arr.as.array->data, new_cap * sizeof(Value));
+        void *new_data = realloc(arr.as.array->data, new_cap * sizeof(Value));
+        wyrm_check_oom(new_data, "val_array_append (array data reallocation)");
+        arr.as.array->data = (Value*)new_data;
         arr.as.array->capacity = new_cap;
     }
     arr.as.array->data[arr.as.array->size++] = item;
@@ -473,12 +733,15 @@ Value val_raw_malloc(Value size) {
         fprintf(stderr, "Runtime Error: malloc size must be a number\n");
         exit(1);
     }
+    if (size.as.number < 0.0) {
+        fprintf(stderr, "Runtime Error: malloc size cannot be negative: %g\n", size.as.number);
+        exit(1);
+    }
     Value v;
     v.type = VAL_RAW_PTR;
     v.as.raw_ptr = malloc((size_t)size.as.number);
-    if (!v.as.raw_ptr && size.as.number > 0) {
-        fprintf(stderr, "Out of memory in raw malloc\n");
-        exit(1);
+    if (size.as.number > 0) {
+        wyrm_check_oom(v.as.raw_ptr, "val_raw_malloc");
     }
     return v;
 }
@@ -492,13 +755,16 @@ Value val_raw_realloc(Value ptr, Value size) {
         fprintf(stderr, "Runtime Error: realloc second argument must be a number\n");
         exit(1);
     }
+    if (size.as.number < 0.0) {
+        fprintf(stderr, "Runtime Error: realloc size cannot be negative: %g\n", size.as.number);
+        exit(1);
+    }
     Value v;
     v.type = VAL_RAW_PTR;
     void *old_ptr = (ptr.type == VAL_RAW_PTR) ? ptr.as.raw_ptr : NULL;
     v.as.raw_ptr = realloc(old_ptr, (size_t)size.as.number);
-    if (!v.as.raw_ptr && size.as.number > 0) {
-        fprintf(stderr, "Out of memory in raw realloc\n");
-        exit(1);
+    if (size.as.number > 0) {
+        wyrm_check_oom(v.as.raw_ptr, "val_raw_realloc");
     }
     return v;
 }
@@ -552,14 +818,14 @@ Value val_read_file(Value path) {
     }
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
+    if (size < 0) {
+        fclose(f);
+        return val_error("Cannot determine file size (non-seekable file)");
+    }
     fseek(f, 0, SEEK_SET);
 
     char *buf = malloc(size + 1);
-    if (!buf) {
-        fclose(f);
-        fprintf(stderr, "Out of memory in read_file\n");
-        exit(1);
-    }
+    wyrm_check_oom(buf, "val_read_file (file read buffer)");
     size_t read_bytes = fread(buf, 1, size, f);
     buf[read_bytes] = '\0';
     fclose(f);
@@ -706,7 +972,7 @@ void llvm_val_ord_val(Value *res, Value *a) { *res = val_ord_val(*a); }
 void llvm_val_chr_val(Value *res, Value *a) { *res = val_chr_val(*a); }
 void llvm_val_to_bytes(Value *res, Value *a) { *res = val_to_bytes(*a); }
 void llvm_val_from_bytes(Value *res, Value *a) { *res = val_from_bytes(*a); }
-void llvm_val_copy(Value *dest, Value *src) { *dest = *src; }
+void llvm_val_copy(Value *dest, Value *src) { *dest = val_copy(*src); }
 
 WyrmArena* val_arena_create_wrapper(Value *size) {
     if (size->type != VAL_NUMBER) {

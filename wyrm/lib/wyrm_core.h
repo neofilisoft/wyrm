@@ -14,6 +14,7 @@ typedef enum {
     VAL_NUMBER,
     VAL_STRING,
     VAL_ARRAY,
+    VAL_STRUCT,
     VAL_RAW_PTR,
     VAL_ERROR
 } ValueType;
@@ -28,6 +29,14 @@ typedef struct {
     int capacity;
 } ValArray;
 
+typedef struct WyrmStruct {
+    char *type_name;
+    int field_count;
+    char **field_names;
+    struct Value *fields;
+    int ref_count;
+} WyrmStruct;
+
 typedef struct Value {
     ValueType type;
     union {
@@ -35,9 +44,12 @@ typedef struct Value {
         double number;
         char *string;
         ValArray *array;
+        WyrmStruct *structure;
         void *raw_ptr;
     } as;
 } Value;
+
+void wyrm_check_oom(void *ptr, const char *context);
 
 // Core constructors and type conversions
 Value val_null();
@@ -89,6 +101,11 @@ Value val_array_append(Value arr, Value item);
 Value val_array_pop(Value arr);
 Value val_array_slice(Value arr, Value start, Value end);
 
+// Struct operations
+Value val_struct_create(const char *type_name, int field_count, const char **field_names, const Value *initial_fields);
+Value val_struct_get(Value s, const char *field_name);
+Value val_struct_set(Value s, const char *field_name, Value new_val);
+
 // Raw memory safety operations
 Value val_raw_malloc(Value size);
 Value val_raw_realloc(Value ptr, Value size);
@@ -104,6 +121,21 @@ Value val_write_file(Value path, Value content);
 Value val_exit(Value code);
 Value val_system(Value cmd);
 Value val_getenv(Value name);
+
+// -------------------------------------------------------------------------
+// Value Lifetime Management (Drop / Copy)
+// -------------------------------------------------------------------------
+// val_drop: destructor for a Value. Recursively frees all heap-allocated
+//   resources owned by v (strings, array data, nested elements).
+//   Call this when a Value is no longer needed and the caller owns it.
+//   No-op for value types (null, bool, number, raw_ptr).
+void val_drop(Value v);
+
+// val_copy: deep copy a Value, producing a new independently owned Value.
+//   The caller is responsible for calling val_drop on the returned Value
+//   when it is no longer needed.
+//   No-op (returns v) for value types that have no heap allocation.
+Value val_copy(Value v);
 
 // LLVM IR Wrapper functions
 void llvm_val_null(Value *res);
