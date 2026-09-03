@@ -1,4 +1,4 @@
 // Hello World example in Wyrm
 fn main() {
-    print("Hello World")
+    print!("Hello World");
 }

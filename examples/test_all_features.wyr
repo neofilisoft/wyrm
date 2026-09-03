@@ -1,0 +1,27 @@
+use std.json;
+use std.yaml;
+use std.collections;
+
+fn main() {
+    print("--- Testing JSON ---")
+    var data = json_parse("{\"name\": \"Wyrm\", \"version\": 2.6}")
+    print("Name:", data["name"])
+    print("Version:", data["version"])
+    print("Encoded:", json_encode(data))
+
+    print("--- Testing YAML ---")
+    var ydata = yaml_parse("title: Game\nfps: 60\n")
+    print("Title:", ydata["title"])
+    print("FPS:", ydata["fps"])
+
+    print("--- Testing HashMap ---")
+    var m = map_new()
+    map_set(m, "player", "WyrmMaster")
+    map_set(m, "score", 9999)
+    print("Player:", m["player"])
+    print("Score:", m["score"])
+    print("Has player:", map_has(m, "player"))
+    print("Len:", map_len(m))
+
+    print("--- All Features Passed! ---")
+}

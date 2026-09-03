@@ -28,20 +28,30 @@ void Parser::advance() {
 
 Token Parser::expect(TokenType type, const std::string& value) {
     if (!current_token_) {
-        throw std::runtime_error("Unexpected end of input");
+        throw std::runtime_error(
+            "Unexpected end of input, expected " + std::string(to_string(type)) +
+            (value.empty() ? "" : " '" + value + "'")
+        );
     }
 
     if (current_token_->type != type) {
-        throw std::runtime_error("Expected token of different type at line " + 
-                                 std::to_string(current_token_->line) + ", column " + 
-                                 std::to_string(current_token_->column));
+        throw std::runtime_error(
+            "Expected " + std::string(to_string(type)) +
+            (value.empty() ? "" : " '" + value + "'") +
+            " but got " + std::string(to_string(current_token_->type)) +
+            " '" + current_token_->value + "'" +
+            " at line " + std::to_string(current_token_->line) +
+            ", column " + std::to_string(current_token_->column)
+        );
     }
 
     if (!value.empty() && current_token_->value != value) {
-        throw std::runtime_error("Expected token value '" + value + "' but got '" + 
-                                 current_token_->value + "' at line " + 
-                                 std::to_string(current_token_->line) + ", column " + 
-                                 std::to_string(current_token_->column));
+        throw std::runtime_error(
+            "Expected " + std::string(to_string(type)) + " '" + value +
+            "' but got '" + current_token_->value + "'" +
+            " at line " + std::to_string(current_token_->line) +
+            ", column " + std::to_string(current_token_->column)
+        );
     }
 
     Token token = *current_token_;
@@ -65,53 +75,63 @@ std::vector<ASTNodePtr> Parser::parse() {
 }
 
 ASTNodePtr Parser::statement() {
-    if (!current_token_) return nullptr;
+    auto statement_inner = [this]() -> ASTNodePtr {
+        if (!current_token_) return nullptr;
 
-    if (current_token_->type == TokenType::KEYWORD) {
-        if (current_token_->value == "use") {
-            return use_statement();
-        } else if (current_token_->value == "fn") {
-            return function_def();
-        } else if (current_token_->value == "return") {
-            return return_statement();
-        } else if (current_token_->value == "break") {
-            return break_statement();
-        } else if (current_token_->value == "continue") {
-            return continue_statement();
-        } else if (current_token_->value == "print") {
-            return print_statement();
-        } else if (current_token_->value == "if") {
-            return if_statement();
-        } else if (current_token_->value == "repeat" || current_token_->value == "do") {
-            return repeat_statement();
-        } else if (current_token_->value == "unsafe") {
-            return unsafe_block();
-        } else if (current_token_->value == "owned") {
-            return owned_declaration();
-        } else if (current_token_->value == "arena") {
-            return arena_declaration();
-        } else if (current_token_->value == "var" || current_token_->value == "dec") {
-            return variable_declaration(current_token_->value);
-        } else if (current_token_->value == "true" || current_token_->value == "false" || current_token_->value == "null") {
-            return expression_statement();
+        if (current_token_->type == TokenType::KEYWORD) {
+            if (current_token_->value == "use") {
+                return use_statement();
+            } else if (current_token_->value == "fn") {
+                return function_def();
+            } else if (current_token_->value == "return") {
+                return return_statement();
+            } else if (current_token_->value == "break") {
+                return break_statement();
+            } else if (current_token_->value == "continue") {
+                return continue_statement();
+            } else if (current_token_->value == "print") {
+                return print_statement();
+            } else if (current_token_->value == "if") {
+                return if_statement();
+            } else if (current_token_->value == "repeat" || current_token_->value == "do") {
+                return repeat_statement();
+            } else if (current_token_->value == "unsafe") {
+                return unsafe_block();
+            } else if (current_token_->value == "owned") {
+                return owned_declaration();
+            } else if (current_token_->value == "arena") {
+                return arena_declaration();
+            } else if (current_token_->value == "struct") {
+                return struct_def();
+            } else if (current_token_->value == "var" || current_token_->value == "dec") {
+                return variable_declaration(current_token_->value);
+            } else if (current_token_->value == "true" || current_token_->value == "false" || current_token_->value == "null") {
+                return expression_statement();
+            }
+        } else if (current_token_->type == TokenType::IDENTIFIER) {
+            // Peek ahead for assignment or method call
+            const Token* p = peek(1);
+            if (p && p->type == TokenType::OPERATOR && 
+                (p->value == "=" || p->value == "+=" || p->value == "-=" || 
+                 p->value == "*=" || p->value == "/=" || p->value == "%=")) {
+                return assignment();
+            } else if (p && p->type == TokenType::DELIMITER && p->value == "[") {
+                return indexed_assignment_or_expr();
+            } else if (p && p->type == TokenType::DELIMITER && p->value == ".") {
+                return arena_method_or_expr();
+            } else {
+                return expression_statement();
+            }
         }
-    } else if (current_token_->type == TokenType::IDENTIFIER) {
-        // Peek ahead for assignment or method call
-        const Token* p = peek(1);
-        if (p && p->type == TokenType::OPERATOR && 
-            (p->value == "=" || p->value == "+=" || p->value == "-=" || 
-             p->value == "*=" || p->value == "/=" || p->value == "%=")) {
-            return assignment();
-        } else if (p && p->type == TokenType::DELIMITER && p->value == "[") {
-            return indexed_assignment_or_expr();
-        } else if (p && p->type == TokenType::DELIMITER && p->value == ".") {
-            return arena_method_or_expr();
-        } else {
-            return expression_statement();
-        }
+
+        return expression_statement();
+    };
+
+    ASTNodePtr res = statement_inner();
+    if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == ";") {
+        advance();
     }
-
-    return expression_statement();
+    return res;
 }
 
 ASTNodePtr Parser::use_statement() {
@@ -218,6 +238,9 @@ ASTNodePtr Parser::continue_statement() {
 
 ASTNodePtr Parser::print_statement() {
     advance(); // consume 'print'
+    if (current_token_ && current_token_->type == TokenType::OPERATOR && current_token_->value == "!") {
+        advance(); // consume '!'
+    }
     expect(TokenType::DELIMITER, "(");
     std::vector<ASTNodePtr> exprs;
 
@@ -365,6 +388,42 @@ ASTNodePtr Parser::arena_declaration() {
     return std::make_unique<ArenaNode>(name_tok.value, std::move(size_expr));
 }
 
+ASTNodePtr Parser::struct_def() {
+    advance(); // consume 'struct'
+    Token name_tok = expect(TokenType::IDENTIFIER);
+    std::string struct_name = name_tok.value;
+
+    expect(TokenType::DELIMITER, "{");
+    std::vector<std::string> fields;
+    std::vector<std::unique_ptr<FunctionDefNode>> methods;
+
+    while (current_token_ && !(current_token_->type == TokenType::DELIMITER && current_token_->value == "}")) {
+        if (current_token_->type == TokenType::NEWLINE) {
+            advance();
+            continue;
+        }
+        if (current_token_->type == TokenType::KEYWORD && current_token_->value == "fn") {
+            auto fn_node = function_def();
+            auto* f_def = dynamic_cast<FunctionDefNode*>(fn_node.get());
+            if (f_def) {
+                fn_node.release();
+                methods.push_back(std::unique_ptr<FunctionDefNode>(f_def));
+            }
+        } else if (current_token_->type == TokenType::IDENTIFIER) {
+            fields.push_back(current_token_->value);
+            advance();
+            if (current_token_ && current_token_->type == TokenType::DELIMITER &&
+                (current_token_->value == "," || current_token_->value == ";")) {
+                advance();
+            }
+        } else {
+            break;
+        }
+    }
+    expect(TokenType::DELIMITER, "}");
+    return std::make_unique<StructDefNode>(struct_name, std::move(fields), std::move(methods));
+}
+
 ASTNodePtr Parser::variable_declaration(const std::string& var_type) {
     advance(); // consume 'var' or 'dec'
     Token name_tok = expect(TokenType::IDENTIFIER);
@@ -397,41 +456,84 @@ ASTNodePtr Parser::assignment() {
 
 ASTNodePtr Parser::indexed_assignment_or_expr() {
     Token name_tok = expect(TokenType::IDENTIFIER);
-    auto obj = std::make_unique<IdentifierNode>(name_tok);
+    ASTNodePtr obj = std::make_unique<IdentifierNode>(name_tok);
 
-    expect(TokenType::DELIMITER, "[");
-    ASTNodePtr index = expression();
-    expect(TokenType::DELIMITER, "]");
+    // Collect all consecutive index levels: arr[i], arr[i][j], etc.
+    std::vector<ASTNodePtr> indices;
+    while (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == "[") {
+        advance(); // consume '['
+        indices.push_back(expression());
+        expect(TokenType::DELIMITER, "]");
+    }
 
+    if (indices.empty()) {
+        // No subscript at all: fall through to expression_statement
+        return obj;
+    }
+
+    // Check for assignment
     if (current_token_ && current_token_->type == TokenType::OPERATOR && current_token_->value == "=") {
         advance(); // consume '='
         ASTNodePtr val = expression();
-        return std::make_unique<IndexAssignNode>(std::move(obj), std::move(index), std::move(val));
+        if (indices.size() == 1) {
+            return std::make_unique<IndexAssignNode>(std::move(obj), std::move(indices[0]), std::move(val));
+        }
+        // Chained: build nested IndexNode for all but last index, then IndexAssignNode
+        ASTNodePtr base = std::make_unique<IndexNode>(std::move(obj), std::move(indices[0]));
+        for (size_t i = 1; i + 1 < indices.size(); ++i) {
+            base = std::make_unique<IndexNode>(std::move(base), std::move(indices[i]));
+        }
+        return std::make_unique<IndexAssignNode>(std::move(base), std::move(indices.back()), std::move(val));
     }
 
-    return std::make_unique<IndexNode>(std::move(obj), std::move(index));
+    // Not an assignment: build a chain of index nodes as an expression
+    ASTNodePtr result = std::make_unique<IndexNode>(std::move(obj), std::move(indices[0]));
+    for (size_t i = 1; i < indices.size(); ++i) {
+        result = std::make_unique<IndexNode>(std::move(result), std::move(indices[i]));
+    }
+    return result;
 }
 
 ASTNodePtr Parser::arena_method_or_expr() {
     Token name_tok = expect(TokenType::IDENTIFIER);
-    auto obj = std::make_unique<IdentifierNode>(name_tok);
+    ASTNodePtr node = std::make_unique<IdentifierNode>(name_tok);
 
-    expect(TokenType::DELIMITER, ".");
-    Token method_tok = expect(TokenType::IDENTIFIER);
-    std::string method = method_tok.value;
+    while (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == ".") {
+        advance(); // consume '.'
+        Token member_tok = expect(TokenType::IDENTIFIER);
+        std::string member = member_tok.value;
 
-    if (method == "alloc") {
-        expect(TokenType::DELIMITER, "(");
-        ASTNodePtr sz = expression();
-        expect(TokenType::DELIMITER, ")");
-        return std::make_unique<ArenaAllocNode>(obj->name, std::move(sz));
-    } else if (method == "reset") {
-        expect(TokenType::DELIMITER, "(");
-        expect(TokenType::DELIMITER, ")");
-        return std::make_unique<ArenaResetNode>(obj->name);
-    } else {
-        throw std::runtime_error("Unknown method '" + method + "' on identifier '" + obj->name + "'");
+        if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == "(") {
+            advance(); // consume '('
+            std::vector<ASTNodePtr> args;
+            if (current_token_ && !(current_token_->type == TokenType::DELIMITER && current_token_->value == ")")) {
+                while (true) {
+                    args.push_back(expression());
+                    if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == ",") {
+                        advance();
+                    } else {
+                        break;
+                    }
+                }
+            }
+            expect(TokenType::DELIMITER, ")");
+            auto* id_obj = dynamic_cast<IdentifierNode*>(node.get());
+            if (id_obj && member == "alloc" && args.size() == 1) {
+                node = std::make_unique<ArenaAllocNode>(id_obj->name, std::move(args[0]));
+            } else if (id_obj && member == "reset" && args.empty()) {
+                node = std::make_unique<ArenaResetNode>(id_obj->name);
+            } else {
+                node = std::make_unique<MethodCallNode>(std::move(node), member, std::move(args));
+            }
+        } else if (current_token_ && current_token_->type == TokenType::OPERATOR && current_token_->value == "=") {
+            advance(); // consume '='
+            ASTNodePtr val = expression();
+            return std::make_unique<MemberAssignNode>(std::move(node), member, std::move(val));
+        } else {
+            node = std::make_unique<MemberAccessNode>(std::move(node), member);
+        }
     }
+    return node;
 }
 
 ASTNodePtr Parser::expression_statement() {
@@ -562,7 +664,9 @@ ASTNodePtr Parser::primary() {
         std::string func_name = current_token_->value;
         Token name_tok(TokenType::IDENTIFIER, func_name, current_token_->line, current_token_->column);
         advance(); // consume builtin keyword
-        
+        if (current_token_ && current_token_->type == TokenType::OPERATOR && current_token_->value == "!") {
+            advance(); // consume '!'
+        }
         expect(TokenType::DELIMITER, "(");
         std::vector<ASTNodePtr> args;
         if (current_token_ && !(current_token_->type == TokenType::DELIMITER && current_token_->value == ")")) {
@@ -579,75 +683,94 @@ ASTNodePtr Parser::primary() {
         return std::make_unique<FunctionCallNode>(std::make_unique<IdentifierNode>(name_tok), std::move(args));
     } else if (current_token_->type == TokenType::IDENTIFIER) {
         Token id_tok = *current_token_;
-        auto node = std::make_unique<IdentifierNode>(id_tok);
+        ASTNodePtr node = std::make_unique<IdentifierNode>(id_tok);
         advance();
-
-        // Check for function call
-        if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == "(") {
-            advance(); // consume '('
-            std::vector<ASTNodePtr> args;
-            if (current_token_ && !(current_token_->type == TokenType::DELIMITER && current_token_->value == ")")) {
-                while (true) {
-                    args.push_back(expression());
-                    if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == ",") {
-                        advance();
-                    } else {
-                        break;
+        if (current_token_ && current_token_->type == TokenType::OPERATOR && current_token_->value == "!") {
+            const Token* next_tok = peek(1);
+            if (next_tok && next_tok->type == TokenType::DELIMITER && next_tok->value == "(") {
+                advance(); // consume '!'
+            }
+        }
+        // Postfix operators: function call, indexing, or member access
+        while (current_token_) {
+            if (current_token_->type == TokenType::DELIMITER && current_token_->value == "(") {
+                advance(); // consume '('
+                std::vector<ASTNodePtr> args;
+                if (current_token_ && !(current_token_->type == TokenType::DELIMITER && current_token_->value == ")")) {
+                    while (true) {
+                        args.push_back(expression());
+                        if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == ",") {
+                            advance();
+                        } else {
+                            break;
+                        }
                     }
                 }
-            }
-            expect(TokenType::DELIMITER, ")");
-            return std::make_unique<FunctionCallNode>(std::move(node), std::move(args));
-        }
-        // Check for indexing or slicing
-        else if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == "[") {
-            advance(); // consume '['
-            
-            // Check for slice starting with ':' (e.g. [:3] or [:])
-            if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == ":") {
-                advance(); // consume ':'
-                ASTNodePtr end = nullptr;
-                if (current_token_ && !(current_token_->type == TokenType::DELIMITER && current_token_->value == "]")) {
-                    end = expression();
-                }
-                expect(TokenType::DELIMITER, "]");
-                auto slice = std::make_unique<SliceNode>(nullptr, std::move(end));
-                return std::make_unique<IndexNode>(std::move(node), std::move(slice));
-            }
-
-            ASTNodePtr first_expr = expression();
-
-            // Check if it's a slice (followed by ':')
-            if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == ":") {
-                advance(); // consume ':'
-                ASTNodePtr end = nullptr;
-                if (current_token_ && !(current_token_->type == TokenType::DELIMITER && current_token_->value == "]")) {
-                    end = expression();
-                }
-                expect(TokenType::DELIMITER, "]");
-                auto slice = std::make_unique<SliceNode>(std::move(first_expr), std::move(end));
-                return std::make_unique<IndexNode>(std::move(node), std::move(slice));
-            } else {
-                expect(TokenType::DELIMITER, "]");
-                return std::make_unique<IndexNode>(std::move(node), std::move(first_expr));
-            }
-        }
-        // Check for arena method alloc/reset
-        else if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == ".") {
-            advance(); // consume '.'
-            Token method_tok = expect(TokenType::IDENTIFIER);
-            std::string method = method_tok.value;
-            if (method == "alloc") {
-                expect(TokenType::DELIMITER, "(");
-                ASTNodePtr sz = expression();
                 expect(TokenType::DELIMITER, ")");
-                return std::make_unique<ArenaAllocNode>(node->name, std::move(sz));
-            } else if (method == "reset") {
-                expect(TokenType::DELIMITER, "(");
-                expect(TokenType::DELIMITER, ")");
-                return std::make_unique<ArenaResetNode>(node->name);
+                auto* id_node = dynamic_cast<IdentifierNode*>(node.get());
+                if (id_node) {
+                    node = std::make_unique<FunctionCallNode>(std::make_unique<IdentifierNode>(id_node->token), std::move(args));
+                } else {
+                    break;
+                }
+            } else if (current_token_->type == TokenType::DELIMITER && current_token_->value == "[") {
+                advance(); // consume '['
+                if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == ":") {
+                    advance(); // consume ':'
+                    ASTNodePtr end = nullptr;
+                    if (current_token_ && !(current_token_->type == TokenType::DELIMITER && current_token_->value == "]")) {
+                        end = expression();
+                    }
+                    expect(TokenType::DELIMITER, "]");
+                    auto slice = std::make_unique<SliceNode>(nullptr, std::move(end));
+                    node = std::make_unique<IndexNode>(std::move(node), std::move(slice));
+                } else {
+                    ASTNodePtr first_expr = expression();
+                    if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == ":") {
+                        advance(); // consume ':'
+                        ASTNodePtr end = nullptr;
+                        if (current_token_ && !(current_token_->type == TokenType::DELIMITER && current_token_->value == "]")) {
+                            end = expression();
+                        }
+                        expect(TokenType::DELIMITER, "]");
+                        auto slice = std::make_unique<SliceNode>(std::move(first_expr), std::move(end));
+                        node = std::make_unique<IndexNode>(std::move(node), std::move(slice));
+                    } else {
+                        expect(TokenType::DELIMITER, "]");
+                        node = std::make_unique<IndexNode>(std::move(node), std::move(first_expr));
+                    }
+                }
+            } else if (current_token_->type == TokenType::DELIMITER && current_token_->value == ".") {
+                advance(); // consume '.'
+                Token member_tok = expect(TokenType::IDENTIFIER);
+                std::string member = member_tok.value;
+                if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == "(") {
+                    advance(); // consume '('
+                    std::vector<ASTNodePtr> args;
+                    if (current_token_ && !(current_token_->type == TokenType::DELIMITER && current_token_->value == ")")) {
+                        while (true) {
+                            args.push_back(expression());
+                            if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == ",") {
+                                advance();
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    expect(TokenType::DELIMITER, ")");
+                    auto* id_obj = dynamic_cast<IdentifierNode*>(node.get());
+                    if (id_obj && member == "alloc" && args.size() == 1) {
+                        node = std::make_unique<ArenaAllocNode>(id_obj->name, std::move(args[0]));
+                    } else if (id_obj && member == "reset" && args.empty()) {
+                        node = std::make_unique<ArenaResetNode>(id_obj->name);
+                    } else {
+                        node = std::make_unique<MethodCallNode>(std::move(node), member, std::move(args));
+                    }
+                } else {
+                    node = std::make_unique<MemberAccessNode>(std::move(node), member);
+                }
             } else {
-                throw std::runtime_error("Unknown method '" + method + "' on identifier '" + node->name + "'");
+                break;
             }
         }
         return node;

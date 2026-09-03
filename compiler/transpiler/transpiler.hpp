@@ -69,6 +69,10 @@ public:
     void visit(ArenaNode* node) override;
     void visit(ArenaAllocNode* node) override;
     void visit(ArenaResetNode* node) override;
+    void visit(StructDefNode* node) override;
+    void visit(MemberAccessNode* node) override;
+    void visit(MemberAssignNode* node) override;
+    void visit(MethodCallNode* node) override;
 
 private:
     std::string last_result_;

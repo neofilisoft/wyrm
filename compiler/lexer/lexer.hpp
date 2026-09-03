@@ -25,6 +25,7 @@ private:
     void advance();
     void skip_whitespace();
     void skip_comment();
+    void skip_block_comment();
 
     Token read_number();
     Token read_string();

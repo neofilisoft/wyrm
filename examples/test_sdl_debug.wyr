@@ -1,0 +1,19 @@
+use std.sdl;
+
+fn main() {
+    sdl_init()
+    var win = sdl_window("Wyrm Game Test", 640, 480)
+    print("Window created successfully!")
+    print("Calling sdl_poll_event...")
+    var ev = sdl_poll_event()
+    print("Poll event done!")
+    print("Calling sdl_clear...")
+    sdl_clear(win, 20, 30, 50)
+    print("Clear done!")
+    print("Calling sdl_present...")
+    sdl_present(win)
+    print("Present done!")
+    sdl_delay(100)
+    sdl_quit()
+    print("All done!")
+}

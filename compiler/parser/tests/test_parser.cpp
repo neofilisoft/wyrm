@@ -186,6 +186,36 @@ void test_parse_unsafe_owned() {
     std::cout << "test_parse_unsafe_owned passed!" << std::endl;
 }
 
+void test_parse_struct() {
+    std::cout << "Running test_parse_struct..." << std::endl;
+    std::string_view code = 
+        "struct Vector2 {\n"
+        "    x,\n"
+        "    y,\n"
+        "    fn length_sq(self) {\n"
+        "        return self.x * self.x + self.y * self.y\n"
+        "    }\n"
+        "}\n";
+    Lexer lexer(code);
+    auto tokens = lexer.tokenize();
+    Parser parser(tokens);
+    auto stmts = parser.parse();
+
+    assert(stmts.size() == 1);
+    auto* s_def = dynamic_cast<StructDefNode*>(stmts[0].get());
+    assert(s_def != nullptr);
+    assert(s_def->name == "Vector2");
+    assert(s_def->fields.size() == 2);
+    assert(s_def->fields[0] == "x");
+    assert(s_def->fields[1] == "y");
+    assert(s_def->methods.size() == 1);
+    assert(s_def->methods[0]->name->name == "length_sq");
+    assert(s_def->methods[0]->params.size() == 1);
+    assert(s_def->methods[0]->params[0]->name == "self");
+
+    std::cout << "test_parse_struct passed!" << std::endl;
+}
+
 int main() {
     std::cout << "=== Running Wyrm Parser Native C++20 Tests ===" << std::endl;
     test_parse_arithmetic();
@@ -195,6 +225,7 @@ int main() {
     test_parse_func_def_call();
     test_parse_arena_stmt();
     test_parse_unsafe_owned();
+    test_parse_struct();
     std::cout << "=== All Parser Tests Passed Successfully ===" << std::endl;
     return 0;
 }

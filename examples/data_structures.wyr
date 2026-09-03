@@ -46,7 +46,7 @@ print("After pop:", mylist)
 var scores = [85, 92, 78, 96, 88]
 var total = 0
 var idx = 0
-repeat {
+do {
     total = total + scores[idx]
     idx = idx + 1
 } til (idx >= len(scores))
@@ -56,7 +56,7 @@ print("Average score:", average)
 // Finding maximum in array
 var max_score = scores[0]
 var j = 1
-repeat {
+do {
     if scores[j] > max_score {
         max_score = scores[j]
     }

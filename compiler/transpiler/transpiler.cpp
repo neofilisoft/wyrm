@@ -693,4 +693,61 @@ void Transpiler::visit(ArenaResetNode* node) {
     last_result_ = "val_arena_reset(" + c_var + ")";
 }
 
+void Transpiler::visit(StructDefNode* node) {
+    std::string fn_name = "wyrm_fn_" + node->name;
+    std::string params_str;
+    for (size_t i = 0; i < node->fields.size(); ++i) {
+        params_str += "Value wyrm_var_" + node->fields[i];
+        if (i + 1 < node->fields.size()) params_str += ", ";
+    }
+    header_lines.push_back("Value " + fn_name + "(" + params_str + ");");
+
+    emit("Value " + fn_name + "(" + params_str + ") {");
+    if (!node->fields.empty()) {
+        std::string fields_array = "const char *field_names[] = { ";
+        std::string vals_array = "Value field_vals[] = { ";
+        for (size_t i = 0; i < node->fields.size(); ++i) {
+            fields_array += "\"" + node->fields[i] + "\"";
+            vals_array += "wyrm_var_" + node->fields[i];
+            if (i + 1 < node->fields.size()) {
+                fields_array += ", ";
+                vals_array += ", ";
+            }
+        }
+        fields_array += " };";
+        vals_array += " };";
+        emit(fields_array);
+        emit(vals_array);
+        emit("return val_struct_create(\"" + node->name + "\", " + std::to_string(node->fields.size()) + ", field_names, field_vals);");
+    } else {
+        emit("return val_struct_create(\"" + node->name + "\", 0, NULL, NULL);");
+    }
+    emit("}\n");
+
+    for (auto& method : node->methods) {
+        visit_statement(method.get());
+    }
+    last_result_ = "";
+}
+
+void Transpiler::visit(MemberAccessNode* node) {
+    std::string obj_code = evaluate(node->obj.get());
+    last_result_ = "val_struct_get(" + obj_code + ", \"" + node->member + "\")";
+}
+
+void Transpiler::visit(MemberAssignNode* node) {
+    std::string obj_code = evaluate(node->obj.get());
+    std::string val_code = evaluate(node->value.get());
+    last_result_ = "val_struct_set(" + obj_code + ", \"" + node->member + "\", " + val_code + ")";
+}
+
+void Transpiler::visit(MethodCallNode* node) {
+    std::string obj_code = evaluate(node->obj.get());
+    std::string args_str = obj_code;
+    for (auto& arg : node->args) {
+        args_str += ", " + evaluate(arg.get());
+    }
+    last_result_ = "wyrm_fn_" + node->method_name + "(" + args_str + ")";
+}
+
 } // namespace wyrm

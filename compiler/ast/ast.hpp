@@ -261,6 +261,49 @@ public:
     void accept(ASTVisitor* visitor) override;
 };
 
+class StructDefNode : public ASTNode {
+public:
+    std::string name;
+    std::vector<std::string> fields;
+    std::vector<std::unique_ptr<FunctionDefNode>> methods;
+
+    StructDefNode(std::string n, std::vector<std::string> f, std::vector<std::unique_ptr<FunctionDefNode>> m)
+        : name(std::move(n)), fields(std::move(f)), methods(std::move(m)) {}
+    void accept(ASTVisitor* visitor) override;
+};
+
+class MemberAccessNode : public ASTNode {
+public:
+    ASTNodePtr obj;
+    std::string member;
+
+    MemberAccessNode(ASTNodePtr o, std::string m)
+        : obj(std::move(o)), member(std::move(m)) {}
+    void accept(ASTVisitor* visitor) override;
+};
+
+class MemberAssignNode : public ASTNode {
+public:
+    ASTNodePtr obj;
+    std::string member;
+    ASTNodePtr value;
+
+    MemberAssignNode(ASTNodePtr o, std::string m, ASTNodePtr val)
+        : obj(std::move(o)), member(std::move(m)), value(std::move(val)) {}
+    void accept(ASTVisitor* visitor) override;
+};
+
+class MethodCallNode : public ASTNode {
+public:
+    ASTNodePtr obj;
+    std::string method_name;
+    std::vector<ASTNodePtr> args;
+
+    MethodCallNode(ASTNodePtr o, std::string m, std::vector<ASTNodePtr> a)
+        : obj(std::move(o)), method_name(std::move(m)), args(std::move(a)) {}
+    void accept(ASTVisitor* visitor) override;
+};
+
 class ASTVisitor {
 public:
     virtual ~ASTVisitor() = default;
@@ -290,6 +333,10 @@ public:
     virtual void visit(ArenaNode* node) = 0;
     virtual void visit(ArenaAllocNode* node) = 0;
     virtual void visit(ArenaResetNode* node) = 0;
+    virtual void visit(StructDefNode* node) = 0;
+    virtual void visit(MemberAccessNode* node) = 0;
+    virtual void visit(MemberAssignNode* node) = 0;
+    virtual void visit(MethodCallNode* node) = 0;
 };
 
 inline void NumberNode::accept(ASTVisitor* visitor) { visitor->visit(this); }
@@ -318,6 +365,10 @@ inline void OwnedDeclNode::accept(ASTVisitor* visitor) { visitor->visit(this); }
 inline void ArenaNode::accept(ASTVisitor* visitor) { visitor->visit(this); }
 inline void ArenaAllocNode::accept(ASTVisitor* visitor) { visitor->visit(this); }
 inline void ArenaResetNode::accept(ASTVisitor* visitor) { visitor->visit(this); }
+inline void StructDefNode::accept(ASTVisitor* visitor) { visitor->visit(this); }
+inline void MemberAccessNode::accept(ASTVisitor* visitor) { visitor->visit(this); }
+inline void MemberAssignNode::accept(ASTVisitor* visitor) { visitor->visit(this); }
+inline void MethodCallNode::accept(ASTVisitor* visitor) { visitor->visit(this); }
 
 } // namespace wyrm
 

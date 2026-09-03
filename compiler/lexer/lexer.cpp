@@ -15,7 +15,8 @@ const std::unordered_set<std::string_view> Lexer::KEYWORDS = {
     "len", "append", "pop",
     "return",
     "var", "dec", "use",
-    "unsafe", "owned", "arena"
+    "unsafe", "owned", "arena",
+    "struct"
 };
 
 const std::unordered_set<char> Lexer::OPERATOR_CHARS = {
@@ -27,7 +28,7 @@ const std::unordered_set<std::string_view> Lexer::OPERATOR_KEYS = {
     "=", "+=", "-=", "*=", "/=", "%=",
     "==", "!=", "<", ">", "<=", ">=",
     "&", "&&", "|", "||",
-    "!",
+    "!", "**",
     "and", "or", "not"
 };
 
@@ -86,6 +87,21 @@ void Lexer::skip_comment() {
         } else {
             break;
         }
+    }
+}
+
+void Lexer::skip_block_comment() {
+    while (true) {
+        char curr = current_char();
+        if (curr == '\0') {
+            throw std::runtime_error("SyntaxError: Unterminated block comment '/*', missing closing '*/'");
+        }
+        if (curr == '*' && peek(1) == '/') {
+            advance(); // consume '*'
+            advance(); // consume '/'
+            return;
+        }
+        advance();
     }
 }
 
@@ -195,16 +211,16 @@ Token Lexer::read_operator() {
     size_t start_col = column_;
     std::string op;
 
-    // Greedy search for longest valid operator starting at current position
-    for (size_t i = 1; i <= 10; ++i) {
+    // Greedy longest-match: try all lengths up to max operator length (3 chars)
+    // Do NOT break on first miss - keep trying to find a longer valid match
+    static constexpr size_t MAX_OP_LEN = 3;
+    for (size_t i = 1; i <= MAX_OP_LEN; ++i) {
         if (pos_ + i > source_.size()) {
             break;
         }
         std::string_view sub = source_.substr(pos_, i);
         if (OPERATOR_KEYS.contains(sub)) {
-            op = std::string(sub);
-        } else {
-            break;
+            op = std::string(sub); // keep updating to longest match found
         }
     }
 
@@ -246,12 +262,20 @@ std::vector<Token> Lexer::tokenize() {
                 tok.type = TokenType::OPERATOR;
             }
             tokens.push_back(std::move(tok));
+        } else if (curr == '/' && peek(1) == '*') {
+            // Block comment: /* ... */
+            advance(); advance(); // consume '/*'
+            skip_block_comment();
         } else if (curr == '/' && peek(1) == '/') {
-            // Single-line comment: check prefix rules
-            if (!tokens.empty() && tokens.back().type != TokenType::NEWLINE) {
-                throw std::runtime_error("SyntaxError: Unexpected comment start '//' at line " + std::to_string(line_) + ", col " + std::to_string(column_));
+            // '//' is context-sensitive:
+            //   - At line start (after NEWLINE or at file start): treat as single-line comment
+            //   - After an expression token: treat as floor-division operator
+            bool at_line_start = tokens.empty() || tokens.back().type == TokenType::NEWLINE;
+            if (at_line_start) {
+                skip_comment(); // consumes '//' and rest of line
+            } else {
+                tokens.push_back(read_operator()); // '//' as floor-division
             }
-            skip_comment();
         } else if (OPERATOR_CHARS.contains(curr)) {
             tokens.push_back(read_operator());
         } else if (DELIMITERS.contains(curr)) {

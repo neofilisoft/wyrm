@@ -9,12 +9,22 @@
 
 extern "C" {
 #include "../../wyrm/lib/wyrm_str.h"
+#include "../../wyrm/lib/stdlib/wyrm_std_json.h"
+#include "../../wyrm/lib/stdlib/wyrm_std_collections.h"
 }
+#include "stdlib_setup.hpp"
 
 namespace wyrm {
 
 // Implementation of Function::call
 Value Function::call(const std::vector<Value>& args, Interpreter* interpreter) {
+    if (interpreter->call_depth_ >= Interpreter::MAX_CALL_DEPTH) {
+        throw std::runtime_error(
+            "RuntimeError: Maximum recursion depth exceeded in function '" + name +
+            "' (limit: " + std::to_string(Interpreter::MAX_CALL_DEPTH) + ")"
+        );
+    }
+
     if (args.size() != params.size()) {
         throw std::runtime_error("Function '" + name + "' expected " + 
                                  std::to_string(params.size()) + " arguments, got " + 
@@ -26,11 +36,17 @@ Value Function::call(const std::vector<Value>& args, Interpreter* interpreter) {
         env->define(params[i], args[i]);
     }
 
+    interpreter->call_depth_++;
     try {
         interpreter->execute_block(body, env);
     } catch (const ReturnSignal& sig) {
+        interpreter->call_depth_--;
         return sig.value;
+    } catch (...) {
+        interpreter->call_depth_--;
+        throw;
     }
+    interpreter->call_depth_--;
 
     return val_null();
 }
@@ -133,16 +149,24 @@ void Interpreter::execute_block(std::vector<ASTNode*>& statements, std::shared_p
 
 void Interpreter::interpret(std::vector<ASTNodePtr>& statements) {
     execute(statements);
+
+    // Look up 'main' without silently swallowing unrelated errors
+    Value main_val;
+    bool has_main = false;
     try {
-        Value main_val = global_env->get("main");
-        if (main_val.type == VAL_RAW_PTR && main_val.as.raw_ptr) {
-            auto* func = static_cast<Callable*>(main_val.as.raw_ptr);
-            if (func) {
-                func->call({}, this);
-            }
+        main_val = global_env->get("main");
+        has_main = true;
+    } catch (const std::runtime_error& e) {
+        std::string msg = e.what();
+        if (msg.find("Undefined variable: 'main'") == std::string::npos) {
+            throw; // re-throw: not a missing-main error
         }
-    } catch (const std::runtime_error&) {
-        // No main function defined; ignore.
+        // No main function defined: that is allowed, just skip.
+    }
+
+    if (has_main && main_val.type == VAL_RAW_PTR && main_val.as.raw_ptr) {
+        auto* func = static_cast<Callable*>(main_val.as.raw_ptr);
+        func->call({}, this);
     }
 }
 
@@ -356,6 +380,15 @@ void Interpreter::visit(IndexNode* node) {
         last_value_ = val_array_slice(obj, start, end);
     } else {
         Value idx = evaluate(node->index.get());
+        if (idx.type == VAL_STRING) {
+            if (json_is_object(obj)) {
+                last_value_ = json_get(obj, idx);
+                return;
+            } else if (obj.type == VAL_RAW_PTR && obj.as.raw_ptr) {
+                last_value_ = map_get(obj, idx);
+                return;
+            }
+        }
         last_value_ = val_array_get(obj, idx);
     }
 }
@@ -364,6 +397,15 @@ void Interpreter::visit(IndexAssignNode* node) {
     Value obj = evaluate(node->obj.get());
     Value idx = evaluate(node->index.get());
     Value val = evaluate(node->value.get());
+    if (idx.type == VAL_STRING) {
+        if (json_is_object(obj)) {
+            last_value_ = json_set(obj, idx, val);
+            return;
+        } else if (obj.type == VAL_RAW_PTR && obj.as.raw_ptr) {
+            last_value_ = map_set(obj, idx, val);
+            return;
+        }
+    }
     last_value_ = val_array_set(obj, idx, val);
 }
 
@@ -374,6 +416,11 @@ void Interpreter::visit(ReturnNode* node) {
 
 void Interpreter::visit(UseNode* node) {
     std::string raw_path = node->module_path;
+
+    // Check if it's a built-in standard library module
+    if (stdlib::try_register(raw_path, *current_env)) {
+        return;
+    }
 
     // Resolve search paths in priority order:
     // 1. Relative to source_dir
@@ -414,10 +461,14 @@ void Interpreter::visit(UseNode* node) {
         throw std::runtime_error("Compilation Error: Cannot find module '" + raw_path + "'");
     }
 
-    std::ifstream f(target_path);
+    std::ifstream file(target_path);
+    if (!file.is_open()) {
+        throw std::runtime_error("Compilation Error: Cannot open module file '" + target_path + "'");
+    }
     std::stringstream buffer;
-    buffer << f.rdbuf();
+    buffer << file.rdbuf();
     std::string source = buffer.str();
+    file.close();
 
     // Save previous source dir
     std::string old_source_dir = source_dir;
@@ -514,6 +565,120 @@ void Interpreter::visit(ArenaResetNode* node) {
     WyrmArena* arena = current_env->get_arena(node->arena_name);
     arena_reset(arena);
     last_value_ = val_null();
+}
+
+Value StructType::call(const std::vector<Value>& args, Interpreter* /*interpreter*/) {
+    std::vector<const char*> field_name_ptrs;
+    for (const auto& f : fields) {
+        field_name_ptrs.push_back(f.c_str());
+    }
+
+    std::vector<Value> initial_vals(fields.size(), val_null());
+    for (size_t i = 0; i < args.size() && i < fields.size(); ++i) {
+        initial_vals[i] = val_copy(args[i]);
+    }
+
+    Value s = val_struct_create(name.c_str(), (int)fields.size(),
+                                field_name_ptrs.empty() ? NULL : field_name_ptrs.data(),
+                                initial_vals.empty() ? NULL : initial_vals.data());
+    for (auto& v : initial_vals) {
+        val_drop(v);
+    }
+    return s;
+}
+
+void Interpreter::visit(StructDefNode* node) {
+    std::unordered_map<std::string, std::shared_ptr<Function>> methods;
+    for (auto& m : node->methods) {
+        std::vector<std::string> params;
+        for (auto& p : m->params) {
+            params.push_back(p->name);
+        }
+        std::vector<ASTNode*> body;
+        for (auto& stmt : m->body) {
+            body.push_back(stmt.get());
+        }
+        auto func = std::make_shared<Function>(m->name->name, params, body, current_env);
+        methods[m->name->name] = func;
+    }
+
+    auto struct_type = std::make_shared<StructType>(node->name, node->fields, methods);
+    struct_types_[node->name] = struct_type;
+
+    // Define constructor callable in current environment
+    Value ctor_val = val_raw_ptr(struct_type.get());
+    current_env->define(node->name, ctor_val, false, false);
+
+    last_value_ = val_null();
+}
+
+void Interpreter::visit(MemberAccessNode* node) {
+    Value obj = evaluate(node->obj.get());
+    if (obj.type == VAL_STRUCT && obj.as.structure) {
+        last_value_ = val_struct_get(obj, node->member.c_str());
+        return;
+    }
+    if (json_is_object(obj)) {
+        Value key = val_string(node->member.c_str());
+        last_value_ = json_get(obj, key);
+        val_drop(key);
+        return;
+    }
+    if (obj.type == VAL_RAW_PTR && obj.as.raw_ptr) {
+        Value key = val_string(node->member.c_str());
+        last_value_ = map_get(obj, key);
+        val_drop(key);
+        return;
+    }
+    last_value_ = val_null();
+}
+
+void Interpreter::visit(MemberAssignNode* node) {
+    Value obj = evaluate(node->obj.get());
+    Value val = evaluate(node->value.get());
+    if (obj.type == VAL_STRUCT && obj.as.structure) {
+        last_value_ = val_struct_set(obj, node->member.c_str(), val);
+        return;
+    }
+    if (json_is_object(obj)) {
+        Value key = val_string(node->member.c_str());
+        last_value_ = json_set(obj, key, val);
+        val_drop(key);
+        return;
+    }
+    if (obj.type == VAL_RAW_PTR && obj.as.raw_ptr) {
+        Value key = val_string(node->member.c_str());
+        last_value_ = map_set(obj, key, val);
+        val_drop(key);
+        return;
+    }
+    last_value_ = val_null();
+}
+
+void Interpreter::visit(MethodCallNode* node) {
+    Value obj = evaluate(node->obj.get());
+    std::vector<Value> args;
+    for (auto& arg : node->args) {
+        args.push_back(evaluate(arg.get()));
+    }
+
+    if (obj.type == VAL_STRUCT && obj.as.structure) {
+        std::string tname = obj.as.structure->type_name;
+        auto it = struct_types_.find(tname);
+        if (it != struct_types_.end()) {
+            auto mit = it->second->methods.find(node->method_name);
+            if (mit != it->second->methods.end()) {
+                std::vector<Value> call_args;
+                call_args.push_back(val_copy(obj));
+                for (auto& a : args) call_args.push_back(val_copy(a));
+                last_value_ = mit->second->call(call_args, this);
+                return;
+            }
+        }
+        throw std::runtime_error("Method '" + node->method_name + "' not found on struct '" + tname + "'");
+    }
+
+    throw std::runtime_error("Cannot call method '" + node->method_name + "' on non-struct value");
 }
 
 } // namespace wyrm

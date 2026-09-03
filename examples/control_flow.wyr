@@ -18,14 +18,14 @@ print("Your grade is: " + grade)
 
 // Repeat loop (similar to do-while)
 var count = 0
-repeat {
+do {
     print("Count is: " + str(count))
     count = count + 1
 } til (count >= 5)
 
 // Repeat loop demonstrating break statement
 var i = 0
-repeat {
+do {
     if i == 3 {
         print("Breaking at 3")
         break
@@ -36,7 +36,7 @@ repeat {
 
 // Repeat loop demonstrating continue statement
 var k = 0
-repeat {
+do {
     k = k + 1
     if k == 2 {
         print("Skipping 2 (continue)")
@@ -47,9 +47,9 @@ repeat {
 
 // Nested loops
 var outer = 0
-repeat {
+do {
     var inner = 0
-    repeat {
+    do {
         print("outer=" + str(outer) + ", inner=" + str(inner))
         inner = inner + 1
     } til (inner >= 3)
@@ -59,7 +59,7 @@ repeat {
 // Using loops for calculation
 var sum = 0
 var n = 1
-repeat {
+do {
     sum = sum + n
     n = n + 1
 } til (n > 10)
