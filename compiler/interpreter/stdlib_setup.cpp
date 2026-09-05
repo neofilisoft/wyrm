@@ -25,6 +25,7 @@ extern "C" {
 #include "../../wyrm/lib/stdlib/wyrm_std_yaml.h"
 #include "../../wyrm/lib/stdlib/wyrm_std_sdl.h"
 #include "../../wyrm/lib/stdlib/wyrm_std_collections.h"
+#include "../../wyrm/lib/stdlib/wyrm_std_random.h"
 }
 
 namespace wyrm {
@@ -285,6 +286,22 @@ void register_collections(Environment& env) {
     reg(env, "set_to_array", wrap1(set_to_array));
 }
 
+void register_random(Environment& env) {
+    reg(env, "rand_seed",        wrap1(rand_seed));
+    reg(env, "rand",             wrap0(rand_val));
+    reg(env, "rand_int",         wrap2(rand_int));
+    reg(env, "rand_range",       wrap2(rand_range));
+    reg(env, "rand_choice",      wrap1(rand_choice));
+    reg(env, "rand_shuffle",     wrap1(rand_shuffle));
+    reg(env, "rand_secure",      wrap0(rand_secure));
+    reg(env, "rand_secure_int",  wrap2(rand_secure_int));
+    reg(env, "rand_bytes_hex",   wrap1(rand_bytes_hex));
+    reg(env, "rand_has_trng",    wrap0(rand_has_trng));
+    reg(env, "rand_trng",        wrap0(rand_trng));
+    reg(env, "rand_trng_int",    wrap2(rand_trng_int));
+    reg(env, "rand_reseed_trng", wrap0(rand_reseed_trng));
+}
+
 /* ============================================================
  * try_register: public dispatch function
  * ============================================================ */
@@ -297,6 +314,7 @@ bool try_register(const std::string& module_path, Environment& env) {
         { "std.sdl",         register_sdl         },
         { "std.thread",      register_thread      },
         { "std.collections", register_collections },
+        { "std.random",      register_random      },
     };
     auto it = dispatch_table.find(module_path);
     if (it == dispatch_table.end()) return false;

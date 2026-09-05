@@ -24,9 +24,11 @@ std::string Transpiler::load_c_runtime() {
         "wyrm_core.h", "wyrm_arena.h", "wyrm_str.h", "wyrm_ffi.h",
         "stdlib/wyrm_std_json.h", "stdlib/wyrm_std_yaml.h",
         "stdlib/wyrm_std_sdl.h", "stdlib/wyrm_std_collections.h",
+        "stdlib/wyrm_std_random.h",
         "wyrm_core.c", "wyrm_arena.c", "wyrm_str.c", "wyrm_ffi.c",
         "stdlib/wyrm_std_json.c", "stdlib/wyrm_std_yaml.c",
-        "stdlib/wyrm_std_sdl.c", "stdlib/wyrm_std_collections.c"
+        "stdlib/wyrm_std_sdl.c", "stdlib/wyrm_std_collections.c",
+        "stdlib/wyrm_std_random.c"
     };
 
     std::string result;
@@ -555,7 +557,8 @@ void Transpiler::visit(ReturnNode* node) {
 void Transpiler::visit(UseNode* node) {
     std::string raw_path = node->module_path;
     if (raw_path == "std.ffi" || raw_path == "std.json" || raw_path == "std.yaml" ||
-        raw_path == "std.sdl" || raw_path == "std.thread" || raw_path == "std.collections") {
+        raw_path == "std.sdl" || raw_path == "std.thread" || raw_path == "std.collections" ||
+        raw_path == "std.random") {
         return;
     }
     std::vector<std::string> possible_paths;
