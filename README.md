@@ -1,28 +1,39 @@
 # Wyrm Language
 [![License: MIT](https://img.shields.io/badge/License-MIT-333333.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-2.7.0-B10C1A)](https://github.com/neofilisoft/wyrm/releases)
+[![Version](https://img.shields.io/badge/version-3.1.0-B10C1A)](https://github.com/neofilisoft/wyrm/releases)
 
-Wyrm (`.wyr`) is a static systems programming language. The main toolchain consists of `wyrmc` (the compiler & runner) and `wyrpkg` (the package manager). The Python package remains in the repository as a development interpreter, parser test bed, and browser compiler source.
+Wyrm (`.wyr`) is a static systems programming language with a self-hosted compiler and gradual static typing. The main toolchain consists of `wyrmc` (the self-hosted compiler & runner written in Wyrm) and `wyrpkg` (the package manager).
 
 ## Position
 
-- Static systems language
-- AOT-first compilation strategy
-- Primary codegen path: LLVM IR - native binary via Clang (v2.4+); C11 transpiler for bootstrap
+- Static systems language with Gradual / Hybrid type annotations
+- Fully self-hosted compiler (`compiler/wyrmc.wyr`) compiling directly to native binaries via LLVM IR and Clang
+- Zero boxing overhead for static primitives (`i32`, `i64`, `u8`, `f32`, `f64`, `bool` variables, arithmetic, and branches emit direct CPU register instructions)
+- C11 / C++20 bootstrap toolchain used exclusively to bootstrap Stage 0
 - Native tools: `wyrmc` and `wyrpkg`
-- Developer interpreter mode for quick feedback
 - `wyrpkg` package and project tool in the style of Cargo with Git-based Public Package Registry
 
 ## Features
 
+- **Self-Hosted Compiler (v3.1.0)**: `wyrmc` is self-hosted in pure Wyrm (`compiler/wyrmc.wyr`) and achieves Stage 2 self-compilation.
+- **Gradual / Hybrid Static Typing (v3.1.0)**:
+  - Annotate variables: `var count: i64 = 0`, `var byte_val: u8 = 255`, `var ratio: f32 = 3.14`, `var flag: bool = true` (emits unboxed LLVM IR allocas, direct CPU registers, and native machine instructions)
+  - Supported primitive types: `i32`, `i64`, `u8`, `f32`, `f64`, `bool`
+  - Annotate functions: `fn add(a: i64, b: i64): i64` (or `-> i64`)
+  - Annotate structs: `struct Point { x: i32, y: i32 }`
+  - Unannotated variables seamlessly infer or use the reference-counted dynamic `Value` model without breaking backward compatibility
+- **Rust/Clang-Style Visual Diagnostics (v3.1.0)**:
+  - Compiler diagnostics render formatted error reports with standard error codes (`error[E0001]`, `error[E0002]`), source file snippets, line and column numbers, and underline carets (`^`).
+- **Ownership & Arena Allocation (v3.1.0)**:
+  - High-performance memory arena allocation via `arena buf(size)`, `buf.alloc(bytes)`, and `buf.reset()`
+  - Scoped resource ownership with automatic drop glue releasing nested resources upon exiting blocks and loops
 - Function declarations with `fn`
 - Runtime Value Types: `number` (IEEE-754 64-bit float), `bool`, `string` (UTF-8 char*), `array` (dynamic list), `struct` (reference-counted user struct), `raw_ptr` (native pointer), `null`
-- Planned AOT Target Primitives: `i8`..`i64`, `u8`..`u64`, `f32`, `f64`, `char` (targeted for direct native LLVM IR code generation)
-- **Structs & Methods (v2.7.0)**: Data structures with named fields, in-place member mutation, and receiver `self` methods backed by deterministic reference counting:
+- **Structs & Methods**: Data structures with named fields, in-place member mutation, and receiver `self` methods backed by deterministic reference counting:
   ```wyrm
   struct Point {
-      x,
-      y,
+      x: i32,
+      y: i32
 
       fn distance_sq(self) {
           return self.x * self.x + self.y * self.y
@@ -53,7 +64,7 @@ Wyrm (`.wyr`) is a static systems programming language. The main toolchain consi
 - `fn main()` is the program entry point and is called automatically (like C)
 - Ownership and RAII direction with `owned`, `unsafe`, `arena` allocation, and raw memory APIs (`malloc`, `free`, `realloc`)
 - 15 built-in type conversion and string operations: `str`, `split`, `join`, `trim`, `upper`, `lower`, `contains`, `replace`, `starts_with`, `ends_with`, `char_at`, `ord_val`, `chr_val`, `to_bytes`, `from_bytes`
-- **Standard Library Modules** (v2.6.0):
+- **Standard Library Modules** (v3.1.0):
   - `std.sdl`: Windowing, 2D hardware rendering, keyboard & mouse event loop
   - `std.ffi`: Foreign Function Interface (dynamic shared library loading via `LoadLibrary`/`dlopen`)
   - `std.thread`: Multithreading via OS threads, worker spawning, and mutex synchronization
@@ -150,6 +161,7 @@ wyrpkg remove package_name
 - `wyrm/lib/stdlib/`: native C backends for standard library modules (`wyrm_std_sdl`, `wyrm_std_json`, `wyrm_std_yaml`, `wyrm_std_collections`)
 - `compiler/`: self-hosted Wyrm compiler source (`wyrmc.wyr`) and C++ bootstrap front-end (lexer, parser, interpreter, transpiler, and `stdlib_setup`)
 - `examples/`: runnable Wyrm programs
+- `extension/`: VS Code syntax highlighting extension for Wyrm (`.wyr`)
 - `docs/Docs.md`: language specification
 - `docs/github-linguist/README.md`: suggested GitHub Linguist language entry
 

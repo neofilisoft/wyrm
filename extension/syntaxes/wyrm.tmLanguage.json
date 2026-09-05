@@ -19,6 +19,9 @@
       "include": "#declarations"
     },
     {
+      "include": "#struct-definitions"
+    },
+    {
       "include": "#function-definitions"
     },
     {
@@ -97,7 +100,11 @@
       "patterns": [
         {
           "name": "keyword.control.wyr",
-          "match": "\\b(if|elif|else|repeat|do|til|break|continue|return|use|unsafe)\\b"
+          "match": "\\b(if|elif|else|repeat|do|til|break|continue|return|use|unsafe|arena|struct)\\b"
+        },
+        {
+          "name": "variable.language.self.wyr",
+          "match": "\\bself\\b"
         }
       ]
     },
@@ -105,7 +112,22 @@
       "patterns": [
         {
           "name": "storage.type.wyr",
-          "match": "\\b(var|dec|owned|i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|bool|char|string)\\b"
+          "match": "\\b(var|dec|owned|i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|bool|char|string|int|float|number|raw_ptr)\\b"
+        }
+      ]
+    },
+    "struct-definitions": {
+      "patterns": [
+        {
+          "match": "\\b(struct)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+          "captures": {
+            "1": {
+              "name": "storage.type.struct.wyr"
+            },
+            "2": {
+              "name": "entity.name.type.struct.wyr"
+            }
+          }
         }
       ]
     },
@@ -140,7 +162,7 @@
       "patterns": [
         {
           "name": "support.function.builtin.wyr",
-          "match": "\\b(print|input|int|float|str|len|type|abs|max|min|round|pow|append|pop|open|read|write|close|malloc|free|realloc)\\b"
+          "match": "\\b(print|input|int|float|str|len|type|abs|max|min|round|pow|append|pop|open|read|write|close|malloc|free|realloc|split|join|trim|upper|lower|contains|replace|starts_with|ends_with|char_at|ord_val|chr_val|to_bytes|from_bytes|read_file|write_file|json_parse|json_encode|json_pretty|yaml_parse|yaml_encode|map_new|map_set|map_get|map_has|map_len|set_new|set_add|set_has|sdl_init|sdl_window|sdl_poll_event|sdl_clear|sdl_present|sdl_delay|sdl_quit|ffi_open|ffi_sym|ffi_call|ffi_close|thread_spawn|thread_join|mutex_new|mutex_lock|mutex_unlock|mutex_destroy)\\b"
         }
       ]
     },
@@ -164,7 +186,7 @@
         },
         {
           "name": "keyword.operator.arithmetic.wyr",
-          "match": "\\+|-|\\*|//|/|%"
+          "match": "\\*\\*|//|\\+|-|\\*|/|%"
         }
       ]
     },
