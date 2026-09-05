@@ -1,6 +1,6 @@
 # Wyrm Language Specification
 
-This document describes the Wyrm language design and architecture implemented in the repository. The canonical project version is stored in the [VERSION](file:///c:/Users/BEST/Desktop/wyrm/VERSION) file (currently **v3.1.0**).
+This document describes the Wyrm language design and architecture implemented in the repository. The canonical project version is stored in the [VERSION](file:///c:/Users/BEST/Desktop/wyrm/VERSION) file (currently **v3.2.0**).
 
 ---
 
@@ -26,9 +26,9 @@ This document describes the Wyrm language design and architecture implemented in
 
 ---
 
-## 3. Values & Static Types (v3.1.0 Gradual / Hybrid Model)
+## 3. Values & Static Types (v3.2.0 Gradual / Hybrid Model)
 
-Wyrm v3.1.0 provides **Gradual / Hybrid Static Typing** combining the ergonomics of dynamic scripting with C/Rust unboxed native CPU execution:
+Wyrm v3.2.0 provides **Gradual / Hybrid Static Typing** combining the ergonomics of dynamic scripting with C/Rust unboxed native CPU execution:
 
 ### Static Primitive Types
 When explicitly annotated, Wyrm generates unboxed LLVM IR instructions without value boxing overhead:
@@ -203,9 +203,35 @@ Wyrm employs a **Deterministic Dynamic Value Runtime with RAII Drop Glue and Sco
 
 ---
 
-## 11. Standard Library Modules (v3.1.0)
+## 11. Standard Library Modules (v3.2.0)
 
 Imported via `use std.<module>;`:
+
+### `std.random` - Random Number Generation
+Three-tier random generation covering PRNG (Xoshiro256**), CSPRNG (OS Cryptographic API), and TRNG (CPU Hardware RDRAND with OS entropy fallback):
+```wyrm
+use std.random;
+
+fn main() {
+    // PRNG (Deterministic with seed, high performance)
+    rand_seed(12345)
+    var roll = rand_int(1, 20)
+    var chance = rand()
+    var item = rand_choice(["sword", "shield", "potion"])
+    var deck = rand_shuffle([1, 2, 3, 4, 5])
+
+    // CSPRNG (Cryptographically Secure)
+    var sec_float = rand_secure()
+    var sec_pin = rand_secure_int(1000, 9999)
+    var token_hex = rand_bytes_hex(32)
+
+    // TRNG (Hardware CPU instruction RDRAND / OS entropy fallback)
+    var has_hw = rand_has_trng()
+    var hw_val = rand_trng()
+    var hw_int = rand_trng_int(1, 100)
+    rand_reseed_trng()
+}
+```
 
 ### `std.sdl` - Windowing & Game Event Loop
 Hardware-accelerated 2D graphics, windowing, and input handling powered by dynamic SDL2 runtime binding:
@@ -386,9 +412,9 @@ This compiles `wyrmc` and `wyrpkg`, deploys the standard library packages, and c
 
 ---
 
-## 15. Compiler Visual Diagnostics (v3.1.0)
+## 15. Compiler Visual Diagnostics (v3.2.0)
 
-Wyrm v3.1.0 features compiler diagnostics styled after Rust and Clang, providing source code context, column markers, and standard error classification codes:
+Wyrm v3.2.0 features compiler diagnostics styled after Rust and Clang, providing source code context, column markers, and standard error classification codes:
 
 ### Visual Error Formatting
 When a syntax, semantic, or lexical error is encountered, `wyrmc` highlights the exact offending code line and column:
