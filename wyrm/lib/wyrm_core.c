@@ -6,6 +6,7 @@
 #include "stdlib/wyrm_std_yaml.h"
 #include "stdlib/wyrm_std_sdl.h"
 #include "stdlib/wyrm_std_collections.h"
+#include "stdlib/wyrm_std_random.h"
 
 void wyrm_check_oom(void *ptr, const char *context) {
     if (!ptr) {
@@ -1110,4 +1111,18 @@ void llvm_val_ffi_open(Value *res, Value *path) { *res = ffi_open(*path); }
 void llvm_val_ffi_sym(Value *res, Value *lib, Value *sym) { *res = ffi_sym(*lib, *sym); }
 void llvm_val_ffi_call(Value *res, Value *fn_ptr, Value *args) { *res = ffi_call_fn(*fn_ptr, *args); }
 void llvm_val_ffi_close(Value *res, Value *lib) { *res = ffi_close(*lib); }
+
+void llvm_val_rand_seed(Value *res, Value *seed) { *res = rand_seed(*seed); }
+void llvm_val_rand(Value *res) { *res = rand_val(); }
+void llvm_val_rand_int(Value *res, Value *min, Value *max) { *res = rand_int(*min, *max); }
+void llvm_val_rand_range(Value *res, Value *min, Value *max) { *res = rand_range(*min, *max); }
+void llvm_val_rand_choice(Value *res, Value *arr) { *res = rand_choice(*arr); }
+void llvm_val_rand_shuffle(Value *res, Value *arr) { *res = rand_shuffle(*arr); }
+void llvm_val_rand_secure(Value *res) { *res = rand_secure(); }
+void llvm_val_rand_secure_int(Value *res, Value *min, Value *max) { *res = rand_secure_int(*min, *max); }
+void llvm_val_rand_bytes_hex(Value *res, Value *count) { *res = rand_bytes_hex(*count); }
+void llvm_val_rand_has_trng(Value *res) { *res = rand_has_trng(); }
+void llvm_val_rand_trng(Value *res) { *res = rand_trng(); }
+void llvm_val_rand_trng_int(Value *res, Value *min, Value *max) { *res = rand_trng_int(*min, *max); }
+void llvm_val_rand_reseed_trng(Value *res) { *res = rand_reseed_trng(); }
 

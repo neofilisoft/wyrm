@@ -264,4 +264,18 @@ void llvm_val_ffi_sym(Value *res, Value *lib, Value *sym);
 void llvm_val_ffi_call(Value *res, Value *fn_ptr, Value *args);
 void llvm_val_ffi_close(Value *res, Value *lib);
 
+void llvm_val_rand_seed(Value *res, Value *seed);
+void llvm_val_rand(Value *res);
+void llvm_val_rand_int(Value *res, Value *min, Value *max);
+void llvm_val_rand_range(Value *res, Value *min, Value *max);
+void llvm_val_rand_choice(Value *res, Value *arr);
+void llvm_val_rand_shuffle(Value *res, Value *arr);
+void llvm_val_rand_secure(Value *res);
+void llvm_val_rand_secure_int(Value *res, Value *min, Value *max);
+void llvm_val_rand_bytes_hex(Value *res, Value *count);
+void llvm_val_rand_has_trng(Value *res);
+void llvm_val_rand_trng(Value *res);
+void llvm_val_rand_trng_int(Value *res, Value *min, Value *max);
+void llvm_val_rand_reseed_trng(Value *res);
+
 #endif // WYRM_CORE_H

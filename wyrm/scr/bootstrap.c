@@ -130,7 +130,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     if (!fgets(version, sizeof(version), vf)) {
-        strcpy(version, "3.1.0");
+        strcpy(version, "3.2.0");
     }
     fclose(vf);
 
@@ -175,7 +175,9 @@ int main(int argc, char *argv[]) {
              "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\stdlib\\wyrm_std_json.c\" -o \"%s\\wyrm_std_json.o\" -I\"%s\\wyrm\\lib\" && "
              "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\stdlib\\wyrm_std_yaml.c\" -o \"%s\\wyrm_std_yaml.o\" -I\"%s\\wyrm\\lib\" && "
              "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\stdlib\\wyrm_std_sdl.c\" -o \"%s\\wyrm_std_sdl.o\" -I\"%s\\wyrm\\lib\" && "
-             "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\stdlib\\wyrm_std_collections.c\" -o \"%s\\wyrm_std_collections.o\" -I\"%s\\wyrm\\lib\"",
+             "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\stdlib\\wyrm_std_collections.c\" -o \"%s\\wyrm_std_collections.o\" -I\"%s\\wyrm\\lib\" && "
+             "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\stdlib\\wyrm_std_random.c\" -o \"%s\\wyrm_std_random.o\" -I\"%s\\wyrm\\lib\"",
+             workspace, install_root, workspace,
              workspace, install_root, workspace,
              workspace, install_root, workspace,
              workspace, install_root, workspace,
@@ -201,13 +203,13 @@ int main(int argc, char *argv[]) {
              " \"%s\\compiler\\transpiler\\transpiler.cpp\""
              " \"%s\\wyrm_core.o\" \"%s\\wyrm_arena.o\" \"%s\\wyrm_str.o\""
              " \"%s\\wyrm_ffi.o\" \"%s\\wyrm_std_json.o\" \"%s\\wyrm_std_yaml.o\""
-             " \"%s\\wyrm_std_sdl.o\" \"%s\\wyrm_std_collections.o\""
+             " \"%s\\wyrm_std_sdl.o\" \"%s\\wyrm_std_collections.o\" \"%s\\wyrm_std_random.o\""
              " -o \"%s\\wyrmc_stage0.exe\""
              " -DWYRM_VERSION=\\\"%s\\\" -DWYRMC_VERSION=\\\"%s\\\"",
              workspace, workspace, workspace, workspace, workspace, workspace, workspace,
              install_root, install_root, install_root,
              install_root, install_root, install_root,
-             install_root, install_root,
+             install_root, install_root, install_root,
              install_root, version, version);
     if (system(build_cmd) != 0) {
         fprintf(stderr, "Error: Failed to compile Stage 0 bootstrap compiler. Please ensure g++ is installed and available in PATH.\n");
