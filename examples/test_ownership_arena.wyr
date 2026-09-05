@@ -1,0 +1,39 @@
+struct Resource {
+    id: i64,
+    tag: string
+}
+
+fn create_resource(id: i64, tag: string): Resource {
+    owned r: Resource = Resource(id, tag)
+    print("Inside create_resource: created id =", r.id, "tag =", r.tag)
+    return r
+}
+
+fn main() {
+    print("=== Wyrm v3.1.0 Ownership and Arena Allocator Test ===")
+
+    // 1. Arena Allocator Test
+    print("[1] Testing Arena Allocator...")
+    arena pool(4096)
+    var chunk1 = pool.alloc(256)
+    print("Allocated chunk1 (256 bytes) from pool")
+    var chunk2 = pool.alloc(512)
+    print("Allocated chunk2 (512 bytes) from pool")
+    pool.reset()
+    print("Arena pool reset successfully")
+
+    // 2. Ownership and Scoped Drop Test
+    print("[2] Testing Scoped Ownership...")
+    owned res: Resource = create_resource(101, "primary")
+    print("Caller received resource id =", res.id, "tag =", res.tag)
+
+    var count: i32 = 0
+    repeat {
+        owned temp_res: Resource = Resource(count, "temp")
+        print("Loop iteration", count, "owns temp_res id =", temp_res.id)
+        count = count + 1
+    } til count >= 3
+    print("Loop finished, scoped resources dropped cleanly")
+
+    print("=== All Ownership and Arena Tests Passed Successfully ===")
+}

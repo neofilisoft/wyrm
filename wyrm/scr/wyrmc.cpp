@@ -12,7 +12,7 @@
 #include "../../compiler/transpiler/transpiler.hpp"
 
 #ifndef WYRMC_VERSION
-#define WYRMC_VERSION "2.4.1"
+#define WYRMC_VERSION "3.1.0"
 #endif
 
 using namespace wyrm;
@@ -101,7 +101,15 @@ int run_native_compiler(const std::string& filename) {
     out.close();
 
     // Compile with gcc
-    std::string build_cmd = "gcc -O2 -std=c11 \"" + temp_c_file + "\" -o \"" + output_exe + "\"";
+    std::string home_dir;
+    if (const char* h = std::getenv("USERPROFILE")) {
+        home_dir = h;
+    } else if (const char* h = std::getenv("HOME")) {
+        home_dir = h;
+    }
+    std::string lib_dir = home_dir + "/.wyrm/packages/wyrmlang/lib";
+    std::string inc_flags = "-Iwyrm/lib -I\"" + lib_dir + "\" -D_CRT_SECURE_NO_WARNINGS -Wno-deprecated-declarations";
+    std::string build_cmd = "gcc -O2 -std=c11 " + inc_flags + " \"" + temp_c_file + "\" -o \"" + output_exe + "\"";
     int compile_res = std::system(build_cmd.c_str());
 
     // Clean up temp file

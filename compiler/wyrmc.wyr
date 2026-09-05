@@ -1,8 +1,10 @@
-// Wyrm Compiler & LLVM IR Generator (wyrmc) v2.4.1
+// Wyrm Compiler & LLVM IR Generator (wyrmc) v3.1.0
 // Written entirely in Wyrm for self-hosting.
 
 var token_pos = [0]
 var g_tokens = [[]]
+var current_source_file = [""]
+var current_source_lines = [[]]
 
 fn is_alpha(c) {
     if c == "" { return false }
@@ -72,7 +74,7 @@ fn tokenize(source) {
                     } til not is_alphanum(c) or pos >= len_src
                     
                     var type = "IDENTIFIER"
-                    if val == "use" or val == "fn" or val == "var" or val == "dec" or val == "owned" or val == "arena" or val == "if" or val == "elif" or val == "else" or val == "repeat" or val == "til" or val == "unsafe" or val == "return" or val == "break" or val == "continue" or val == "print" or val == "and" or val == "or" or val == "not" or val == "true" or val == "false" or val == "null" or val == "try" or val == "catch" {
+                    if val == "use" or val == "fn" or val == "var" or val == "dec" or val == "owned" or val == "arena" or val == "if" or val == "elif" or val == "else" or val == "repeat" or val == "do" or val == "til" or val == "struct" or val == "unsafe" or val == "return" or val == "break" or val == "continue" or val == "print" or val == "and" or val == "or" or val == "not" or val == "true" or val == "false" or val == "null" or val == "try" or val == "catch" {
                         type = "KEYWORD"
                     }
                     append(tokens, [type, val, line, start_col])
@@ -128,8 +130,7 @@ fn tokenize(source) {
                         }
                     } til pos >= len_src
                     if not closed {
-                        print("Lexer Error: Unterminated string literal at line", line, "col", start_col)
-                        exit(1)
+                        report_diagnostic("E0003", "unterminated string literal", line, start_col, "add closing quote")
                     }
                     append(tokens, ["STRING", val, line, start_col])
                 } else {
@@ -202,11 +203,38 @@ fn advance() {
     token_pos[0] = token_pos[0] + 1
 }
 
+fn report_diagnostic(err_code, title, line_no, col_no, hint_msg) {
+    print("error[" + err_code + "]: " + title)
+    var file_str = current_source_file[0]
+    if file_str == "" { file_str = "source.wyr" }
+    print("  --> " + file_str + ":" + str(line_no) + ":" + str(col_no))
+    print("   |")
+    
+    var lines_list = current_source_lines[0]
+    if line_no > 0 and line_no <= len(lines_list) {
+        var src_line = lines_list[line_no - 1]
+        var line_prefix = " " + str(line_no) + " | "
+        print(line_prefix + src_line)
+        
+        var pad = "   | "
+        var c = 1
+        repeat {
+            if c >= col_no { break }
+            pad = pad + " "
+            c = c + 1
+        } til c >= col_no
+        print(pad + "^ " + hint_msg)
+    } else {
+        print("   |   ^ " + hint_msg)
+    }
+    print("   |")
+    exit(1)
+}
+
 fn expect(type, val) {
     var tok = current()
     if tok[0] != type or tok[1] != val {
-        print("Parser Error: Expected token", type, "'" + val + "' but got", tok[0], "'" + tok[1] + "' at line", tok[2], "col", tok[3])
-        exit(1)
+        report_diagnostic("E0001", "syntax error: unexpected token", tok[2], tok[3], "expected '" + val + "', got '" + tok[1] + "'")
     }
     advance()
 }
@@ -241,8 +269,13 @@ fn parse_statement_inner() {
     if tok[0] == "KEYWORD" {
         if tok[1] == "use" {
             advance()
-            var path = cur_val()
-            advance()
+            var path = ""
+            repeat {
+                var cur_tok = current()
+                if cur_tok[0] == "EOF" or cur_tok[0] == "NEWLINE" or cur_tok[1] == ";" { break }
+                path = path + cur_tok[1]
+                advance()
+            } til false
             return ["Use", path]
         }
         if tok[1] == "fn" {
@@ -253,8 +286,15 @@ fn parse_statement_inner() {
             var params = []
             if cur_val() != ")" {
                 repeat {
-                    append(params, cur_val())
+                    var p_name = cur_val()
                     advance()
+                    var p_type = ""
+                    if cur_val() == ":" {
+                        advance()
+                        p_type = cur_val()
+                        advance()
+                    }
+                    append(params, p_name)
                     if cur_val() == "," {
                         advance()
                     } else { break }
@@ -262,12 +302,14 @@ fn parse_statement_inner() {
             }
             expect("DELIMITER", ")")
             var returns_error = false
-            if cur_val() == "->" {
+            var ret_type = ""
+            if cur_val() == "->" or cur_val() == ":" {
                 advance()
                 if cur_val() == "!" {
                     returns_error = true
                     advance()
                 }
+                ret_type = cur_val()
                 advance()
             }
             expect("DELIMITER", "{")
@@ -281,16 +323,22 @@ fn parse_statement_inner() {
                 }
             } til false
             expect("DELIMITER", "}")
-            return ["FuncDef", name, params, body, returns_error]
+            return ["FuncDef", name, params, body, returns_error, ret_type]
         }
         if tok[1] == "var" or tok[1] == "dec" or tok[1] == "owned" {
             var type = tok[1]
             advance()
             var name = cur_val()
             advance()
+            var v_type = ""
+            if cur_val() == ":" {
+                advance()
+                v_type = cur_val()
+                advance()
+            }
             expect("OPERATOR", "=")
             var val = parse_expression()
-            return ["VarDecl", type, name, val]
+            return ["VarDecl", type, name, val, v_type]
         }
         if tok[1] == "arena" {
             advance()
@@ -300,6 +348,35 @@ fn parse_statement_inner() {
             var size = parse_expression()
             expect("DELIMITER", ")")
             return ["Arena", name, size]
+        }
+        if tok[1] == "struct" {
+            advance()
+            var name = cur_val()
+            advance()
+            expect("DELIMITER", "{")
+            var fields = []
+            var methods = []
+            repeat {
+                if cur_val() == "}" { break }
+                if cur_type() == "NEWLINE" {
+                    advance()
+                } elif cur_val() == "fn" {
+                    append(methods, parse_statement())
+                } else {
+                    var f_name = cur_val()
+                    advance()
+                    var f_type = ""
+                    if cur_val() == ":" {
+                        advance()
+                        f_type = cur_val()
+                        advance()
+                    }
+                    append(fields, f_name)
+                    if cur_val() == "," or cur_val() == ";" { advance() }
+                }
+            } til false
+            expect("DELIMITER", "}")
+            return ["StructDef", name, fields, methods]
         }
         if tok[1] == "if" {
             advance()
@@ -350,7 +427,7 @@ fn parse_statement_inner() {
             }
             return ["If", cond, then_body, elif_clauses, else_body]
         }
-        if tok[1] == "repeat" {
+        if tok[1] == "repeat" or tok[1] == "do" {
             advance()
             expect("DELIMITER", "{")
             var body = []
@@ -457,6 +534,9 @@ fn parse_statement_inner() {
         var val = parse_expression()
         if expr[0] == "Index" {
             return ["IndexAssign", expr[1], expr[2], val]
+        }
+        if expr[0] == "MemberAccess" {
+            return ["MemberAssign", expr[1], expr[2], val]
         }
         return ["Assign", expr[1], val]
     }
@@ -653,23 +733,35 @@ fn parse_primary() {
             expect("DELIMITER", "]")
             return ["Index", ["Identifier", name], expr]
         }
-        // Arena reset / alloc
+        // Dot access: MemberAccess, MethodCall, or Arena alloc/reset
         if cur_val() == "." {
             advance()
-            var method = cur_val()
+            var member_or_method = cur_val()
             advance()
-            expect("DELIMITER", "(")
-            if method == "alloc" {
-                var size = parse_expression()
+            if cur_val() == "(" {
+                advance()
+                if member_or_method == "alloc" {
+                    var size = parse_expression()
+                    expect("DELIMITER", ")")
+                    return ["ArenaAlloc", name, size]
+                }
+                if member_or_method == "reset" {
+                    expect("DELIMITER", ")")
+                    return ["ArenaReset", name]
+                }
+                var args = []
+                if cur_val() != ")" {
+                    repeat {
+                        append(args, parse_expression())
+                        if cur_val() == "," {
+                            advance()
+                        } else { break }
+                    } til false
+                }
                 expect("DELIMITER", ")")
-                return ["ArenaAlloc", name, size]
+                return ["MethodCall", ["Identifier", name], member_or_method, args]
             }
-            if method == "reset" {
-                expect("DELIMITER", ")")
-                return ["ArenaReset", name]
-            }
-            print("Parser Error: Unknown arena method '" + method + "'")
-            exit(1)
+            return ["MemberAccess", ["Identifier", name], member_or_method]
         }
         return ["Identifier", name]
     }
@@ -694,8 +786,7 @@ fn parse_primary() {
         return ["List", elements]
     }
     
-    print("Parser Error: Unexpected token", tok[0], "'" + tok[1] + "' at line", tok[2], "col", tok[3])
-    exit(1)
+    report_diagnostic("E0002", "syntax error: unexpected token " + tok[0] + " '" + tok[1] + "'", tok[2], tok[3], "expression expected")
 }
 
 // LLVM IR Code Generator State
@@ -714,6 +805,7 @@ var in_function = [false]
 var in_unsafe = [false]
 var has_main_def = [false]
 var declared_globals = [[]]
+var emitted_globals = [[]]
 var declared_locals = [[]]
 var constants = []
 var g_loop_breaks = [[]]
@@ -722,79 +814,331 @@ var g_loop_continues = [[]]
 // Static Type Analysis State & Helpers
 var current_local_types = []
 
-fn can_gen_double(node) {
-    if node == null { return false }
-    if type(node) != "Array" { return false }
+fn has_dot(s) {
+    var i = 0
+    var l = len(s)
+    repeat {
+        if i >= l { break }
+        if char_at(s, i) == "." { return true }
+        i = i + 1
+    } til i >= l
+    return false
+}
+
+fn is_array(v) {
+    if v == null { return false }
+    var t = type(v)
+    return t == "array" or t == "Array"
+}
+
+fn is_unboxed_type(t) {
+    return t == "i32" or t == "int" or t == "i64" or t == "u8" or t == "f32" or t == "f64" or t == "float" or t == "Number" or t == "bool"
+}
+
+fn canonical_type(t) {
+    if t == "i32" or t == "int" { return "i32" }
+    if t == "i64" { return "i64" }
+    if t == "u8" { return "u8" }
+    if t == "f32" { return "f32" }
+    if t == "f64" or t == "float" or t == "Number" { return "f64" }
+    if t == "bool" { return "bool" }
+    return "Dynamic"
+}
+
+fn get_llvm_type(t) {
+    var c = canonical_type(t)
+    if c == "i32" { return "i32" }
+    if c == "i64" { return "i64" }
+    if c == "u8" { return "i8" }
+    if c == "f32" { return "float" }
+    if c == "f64" { return "double" }
+    if c == "bool" { return "i1" }
+    return "%struct.Value"
+}
+
+fn get_llvm_align(t) {
+    var c = canonical_type(t)
+    if c == "i32" { return "4" }
+    if c == "i64" { return "8" }
+    if c == "u8" { return "1" }
+    if c == "f32" { return "4" }
+    if c == "f64" { return "8" }
+    if c == "bool" { return "1" }
+    return "8"
+}
+
+fn can_gen_unboxed(node, target_t) {
+    if not is_array(node) { return false }
+    target_t = canonical_type(target_t)
     var n_type = node[0]
-    if n_type == "Number" { return true }
+    if n_type == "Number" {
+        if target_t == "i32" or target_t == "i64" or target_t == "u8" {
+            return not has_dot(node[1])
+        }
+        if target_t == "f32" or target_t == "f64" {
+            return true
+        }
+        if target_t == "bool" {
+            return node[1] == "0" or node[1] == "1"
+        }
+        return false
+    }
+    if n_type == "Boolean" {
+        return target_t == "bool"
+    }
     if n_type == "Identifier" {
-        return get_var_type(node[1]) == "Number"
+        var vt = canonical_type(get_var_type(node[1]))
+        if vt == target_t { return true }
+        if target_t == "i64" and (vt == "i32" or vt == "u8") { return true }
+        if target_t == "i32" and vt == "u8" { return true }
+        if target_t == "f64" and (vt == "f32" or vt == "i32" or vt == "u8") { return true }
+        return false
     }
     if n_type == "BinaryOp" {
         var op = node[1]
-        if op == "+" or op == "-" or op == "*" or op == "/" {
-            return can_gen_double(node[2]) and can_gen_double(node[3])
+        if target_t == "bool" {
+            if op == "and" or op == "or" or op == "&&" or op == "||" {
+                return can_gen_unboxed(node[2], "bool") and can_gen_unboxed(node[3], "bool")
+            }
+            return false
+        }
+        if op == "+" or op == "-" or op == "*" or op == "/" or op == "%" {
+            if (target_t == "f32" or target_t == "f64") and op == "%" { return false }
+            return can_gen_unboxed(node[2], target_t) and can_gen_unboxed(node[3], target_t)
         }
     }
     if n_type == "UnaryOp" {
         var op = node[1]
-        if op == "-" {
-            return can_gen_double(node[2])
+        if op == "-" and target_t != "bool" {
+            return can_gen_unboxed(node[2], target_t)
+        }
+        if (op == "!" or op == "not") and target_t == "bool" {
+            return can_gen_unboxed(node[2], "bool")
         }
     }
     return false
 }
 
-fn gen_double_expr(node) {
-    if node == null { return "0.0" }
+fn gen_unboxed_expr(node, target_t) {
+    target_t = canonical_type(target_t)
+    if node == null {
+        if target_t == "f32" or target_t == "f64" { return "0.0" }
+        return "0"
+    }
     var n_type = node[0]
     if n_type == "Number" {
         var val = node[1]
-        if not has_dot(val) {
-            val = val + ".0"
+        if target_t == "f32" or target_t == "f64" {
+            if not has_dot(val) { val = val + ".0" }
+            return val
         }
         return val
     }
+    if n_type == "Boolean" {
+        if node[1] == "true" { return "1" }
+        return "0"
+    }
     if n_type == "Identifier" {
         var name = node[1]
-        var dbl_val = "%dbl_val_" + str(temp_count[0])
+        var vt = canonical_type(get_var_type(name))
+        var reg_val = "%val_" + str(temp_count[0])
         temp_count[0] = temp_count[0] + 1
-        if contains_val(declared_globals[0], name) {
-            emit_inst(dbl_val + " = load double, ptr @wyrm_var_" + name + ", align 8")
+        var src_llvm_t = get_llvm_type(vt)
+        var src_llvm_a = get_llvm_align(vt)
+        if contains_val(declared_globals[0], name) or not in_function[0] {
+            emit_inst(reg_val + " = load " + src_llvm_t + ", ptr @wyrm_var_" + name + ", align " + src_llvm_a)
         } else {
-            emit_inst(dbl_val + " = load double, ptr %wyrm_var_" + name + ", align 8")
+            emit_inst(reg_val + " = load " + src_llvm_t + ", ptr %wyrm_var_" + name + ", align " + src_llvm_a)
         }
-        return dbl_val
+        if vt != target_t {
+            var conv_val = "%conv_" + str(temp_count[0])
+            temp_count[0] = temp_count[0] + 1
+            if vt == "u8" and target_t == "i32" {
+                emit_inst(conv_val + " = zext i8 " + reg_val + " to i32")
+                return conv_val
+            }
+            if vt == "u8" and target_t == "i64" {
+                emit_inst(conv_val + " = zext i8 " + reg_val + " to i64")
+                return conv_val
+            }
+            if vt == "i32" and target_t == "i64" {
+                emit_inst(conv_val + " = sext i32 " + reg_val + " to i64")
+                return conv_val
+            }
+            if vt == "f32" and target_t == "f64" {
+                emit_inst(conv_val + " = fpext float " + reg_val + " to double")
+                return conv_val
+            }
+            if (vt == "i32" or vt == "u8") and target_t == "f64" {
+                emit_inst(conv_val + " = sitofp " + src_llvm_t + " " + reg_val + " to double")
+                return conv_val
+            }
+        }
+        return reg_val
     }
     if n_type == "BinaryOp" {
         var op = node[1]
-        var left = gen_double_expr(node[2])
-        var right = gen_double_expr(node[3])
-        var res = "%dbl_op_" + str(temp_count[0])
+        var left = gen_unboxed_expr(node[2], target_t)
+        var right = gen_unboxed_expr(node[3], target_t)
+        var res = "%op_" + str(temp_count[0])
         temp_count[0] = temp_count[0] + 1
-        
-        var instr = "fadd"
-        if op == "-" {
-            instr = "fsub"
-        } elif op == "*" {
-            instr = "fmul"
-        } elif op == "/" {
-            instr = "fdiv"
+        var llvm_t = get_llvm_type(target_t)
+        if target_t == "bool" {
+            if op == "and" or op == "&&" {
+                emit_inst(res + " = and i1 " + left + ", " + right)
+                return res
+            }
+            if op == "or" or op == "||" {
+                emit_inst(res + " = or i1 " + left + ", " + right)
+                return res
+            }
         }
-        
-        emit_inst(res + " = " + instr + " double " + left + ", " + right)
+        if target_t == "f32" or target_t == "f64" {
+            var f_instr = "fadd"
+            if op == "-" {
+                f_instr = "fsub"
+            } elif op == "*" {
+                f_instr = "fmul"
+            } elif op == "/" {
+                f_instr = "fdiv"
+            }
+            emit_inst(res + " = " + f_instr + " " + llvm_t + " " + left + ", " + right)
+            return res
+        }
+        var i_instr = "add"
+        if op == "-" {
+            i_instr = "sub"
+        } elif op == "*" {
+            i_instr = "mul"
+        } elif op == "/" {
+            if target_t == "u8" {
+                i_instr = "udiv"
+            } else {
+                i_instr = "sdiv"
+            }
+        } elif op == "%" {
+            if target_t == "u8" {
+                i_instr = "urem"
+            } else {
+                i_instr = "srem"
+            }
+        }
+        emit_inst(res + " = " + i_instr + " " + llvm_t + " " + left + ", " + right)
         return res
     }
     if n_type == "UnaryOp" {
         var op = node[1]
-        var sub = gen_double_expr(node[2])
-        var res = "%dbl_un_" + str(temp_count[0])
+        var llvm_t = get_llvm_type(target_t)
+        var sub = gen_unboxed_expr(node[2], target_t)
+        var res = "%un_" + str(temp_count[0])
         temp_count[0] = temp_count[0] + 1
-        emit_inst(res + " = fneg double " + sub)
+        if target_t == "bool" {
+            emit_inst(res + " = xor i1 " + sub + ", 1")
+            return res
+        }
+        if target_t == "f32" or target_t == "f64" {
+            emit_inst(res + " = fneg " + llvm_t + " " + sub)
+            return res
+        }
+        emit_inst(res + " = sub " + llvm_t + " 0, " + sub)
         return res
     }
-    return "0.0"
+    return "0"
 }
+
+fn can_gen_static_cmp(node) {
+    if not is_array(node) { return false }
+    if node[0] == "BinaryOp" {
+        var op = node[1]
+        if op == "==" or op == "!=" or op == "<" or op == "<=" or op == ">" or op == ">=" {
+            if can_gen_unboxed(node[2], "i32") and can_gen_unboxed(node[3], "i32") { return true }
+            if can_gen_unboxed(node[2], "i64") and can_gen_unboxed(node[3], "i64") { return true }
+            if can_gen_unboxed(node[2], "u8") and can_gen_unboxed(node[3], "u8") { return true }
+            if can_gen_unboxed(node[2], "f64") and can_gen_unboxed(node[3], "f64") { return true }
+            if can_gen_unboxed(node[2], "f32") and can_gen_unboxed(node[3], "f32") { return true }
+            if can_gen_unboxed(node[2], "bool") and can_gen_unboxed(node[3], "bool") { return true }
+        }
+    }
+    return false
+}
+
+fn gen_static_cmp(node) {
+    var cmp_type = "i32"
+    if can_gen_unboxed(node[2], "i32") and can_gen_unboxed(node[3], "i32") {
+        cmp_type = "i32"
+    } elif can_gen_unboxed(node[2], "i64") and can_gen_unboxed(node[3], "i64") {
+        cmp_type = "i64"
+    } elif can_gen_unboxed(node[2], "u8") and can_gen_unboxed(node[3], "u8") {
+        cmp_type = "u8"
+    } elif can_gen_unboxed(node[2], "f64") and can_gen_unboxed(node[3], "f64") {
+        cmp_type = "f64"
+    } elif can_gen_unboxed(node[2], "f32") and can_gen_unboxed(node[3], "f32") {
+        cmp_type = "f32"
+    } elif can_gen_unboxed(node[2], "bool") and can_gen_unboxed(node[3], "bool") {
+        cmp_type = "bool"
+    }
+    
+    var op = node[1]
+    var left = gen_unboxed_expr(node[2], cmp_type)
+    var right = gen_unboxed_expr(node[3], cmp_type)
+    var res = "%cmp_i1_" + str(temp_count[0])
+    temp_count[0] = temp_count[0] + 1
+    var llvm_t = get_llvm_type(cmp_type)
+    
+    if cmp_type == "f32" or cmp_type == "f64" {
+        var cond_op = "oeq"
+        if op == "!=" {
+            cond_op = "one"
+        } elif op == "<" {
+            cond_op = "olt"
+        } elif op == "<=" {
+            cond_op = "ole"
+        } elif op == ">" {
+            cond_op = "ogt"
+        } elif op == ">=" {
+            cond_op = "oge"
+        }
+        emit_inst(res + " = fcmp " + cond_op + " " + llvm_t + " " + left + ", " + right)
+        return res
+    }
+    if cmp_type == "u8" {
+        var cond_op = "eq"
+        if op == "!=" {
+            cond_op = "ne"
+        } elif op == "<" {
+            cond_op = "ult"
+        } elif op == "<=" {
+            cond_op = "ule"
+        } elif op == ">" {
+            cond_op = "ugt"
+        } elif op == ">=" {
+            cond_op = "uge"
+        }
+        emit_inst(res + " = icmp " + cond_op + " i8 " + left + ", " + right)
+        return res
+    }
+    var cond_op = "eq"
+    if op == "!=" {
+        cond_op = "ne"
+    } elif op == "<" {
+        cond_op = "slt"
+    } elif op == "<=" {
+        cond_op = "sle"
+    } elif op == ">" {
+        cond_op = "sgt"
+    } elif op == ">=" {
+        cond_op = "sge"
+    }
+    emit_inst(res + " = icmp " + cond_op + " " + llvm_t + " " + left + ", " + right)
+    return res
+}
+
+fn can_gen_i32(node) { return can_gen_unboxed(node, "i32") }
+fn gen_i32_expr(node) { return gen_unboxed_expr(node, "i32") }
+fn can_gen_i32_cmp(node) { return can_gen_static_cmp(node) }
+fn gen_i32_cmp(node) { return gen_static_cmp(node) }
+fn can_gen_double(node) { return can_gen_unboxed(node, "f64") }
+fn gen_double_expr(node) { return gen_unboxed_expr(node, "f64") }
 
 fn get_var_type(name) {
     var l = len(current_local_types)
@@ -826,33 +1170,45 @@ fn set_var_type(name, type) {
 }
 
 fn infer_expr_type_in_scope(expr) {
-    if expr == null { return "Dynamic" }
-    if type(expr) != "Array" { return "Dynamic" }
+    if not is_array(expr) { return "Dynamic" }
     var n_type = expr[0]
     if n_type == "Number" {
-        return "Number"
+        if not has_dot(expr[1]) {
+            return "i32"
+        }
+        return "f64"
+    }
+    if n_type == "Boolean" {
+        return "bool"
     }
     if n_type == "Identifier" {
         return get_var_type(expr[1])
     }
     if n_type == "BinaryOp" {
         var op = expr[1]
-        if op == "+" or op == "-" or op == "*" or op == "/" {
-            var left_t = infer_expr_type_in_scope(expr[2])
-            var right_t = infer_expr_type_in_scope(expr[3])
-            if left_t == "Number" and right_t == "Number" {
-                return "Number"
+        if op == "==" or op == "!=" or op == "<" or op == "<=" or op == ">" or op == ">=" or op == "and" or op == "or" or op == "&&" or op == "||" {
+            return "bool"
+        }
+        if op == "+" or op == "-" or op == "*" or op == "/" or op == "%" {
+            var left_t = canonical_type(infer_expr_type_in_scope(expr[2]))
+            var right_t = canonical_type(infer_expr_type_in_scope(expr[3]))
+            if left_t == right_t and is_unboxed_type(left_t) {
+                return left_t
             }
+            if left_t == "f64" or right_t == "f64" { return "f64" }
+            if left_t == "f32" or right_t == "f32" { return "f32" }
+            if left_t == "i64" or right_t == "i64" { return "i64" }
+            if left_t == "i32" or right_t == "i32" { return "i32" }
+            if left_t == "u8" or right_t == "u8" { return "u8" }
         }
         return "Dynamic"
     }
     if n_type == "UnaryOp" {
         var op = expr[1]
+        if op == "!" or op == "not" { return "bool" }
         if op == "-" {
             var sub_t = infer_expr_type_in_scope(expr[2])
-            if sub_t == "Number" {
-                return "Number"
-            }
+            if is_unboxed_type(sub_t) { return sub_t }
         }
         return "Dynamic"
     }
@@ -860,21 +1216,28 @@ fn infer_expr_type_in_scope(expr) {
 }
 
 fn scan_stmt_types(stmt) {
-    if stmt == null { return; }
-    if type(stmt) != "Array" { return; }
+    if not is_array(stmt) { return; }
     var n_type = stmt[0]
     if n_type == "VarDecl" {
         var name = stmt[2]
         var val = stmt[3]
-        var val_type = infer_expr_type_in_scope(val)
-        set_var_type(name, val_type)
+        var explicit_t = ""
+        if len(stmt) > 4 { explicit_t = stmt[4] }
+        if is_unboxed_type(explicit_t) {
+            set_var_type(name, canonical_type(explicit_t))
+        } else {
+            var val_type = infer_expr_type_in_scope(val)
+            set_var_type(name, val_type)
+        }
     } elif n_type == "Assign" {
         var name = stmt[1]
         var val = stmt[2]
-        var val_type = infer_expr_type_in_scope(val)
         var current_type = get_var_type(name)
-        if current_type == "Number" and val_type != "Number" {
-            set_var_type(name, "Dynamic")
+        if not is_unboxed_type(current_type) {
+            var val_type = infer_expr_type_in_scope(val)
+            if current_type != val_type {
+                set_var_type(name, "Dynamic")
+            }
         }
     } elif n_type == "Repeat" {
         var body = stmt[1]
@@ -938,7 +1301,60 @@ fn scan_stmt_types(stmt) {
             scan_stmt_types(catch_body[j])
             j = j + 1
         } til j >= cbl
+    } elif n_type == "Unsafe" {
+        var u_body = stmt[1]
+        var ubl = len(u_body)
+        var j = 0
+        repeat {
+            if j >= ubl { break }
+            scan_stmt_types(u_body[j])
+            j = j + 1
+        } til j >= ubl
     }
+}
+
+fn collect_globals_from_stmts(stmts) {
+    if not is_array(stmts) { return }
+    var i = 0
+    var l = len(stmts)
+    repeat {
+        if i >= l { break }
+        var stmt = stmts[i]
+        if is_array(stmt) {
+            var stype = stmt[0]
+            if stype == "VarDecl" {
+                var name = stmt[2]
+                if not contains_val(declared_globals[0], name) {
+                    append(declared_globals[0], name)
+                }
+            } elif stype == "Arena" {
+                var name = stmt[1]
+                if not contains_val(declared_globals[0], name) {
+                    append(declared_globals[0], name)
+                }
+            } elif stype == "Repeat" {
+                collect_globals_from_stmts(stmt[1])
+            } elif stype == "If" {
+                collect_globals_from_stmts(stmt[2])
+                var elif_clauses = stmt[3]
+                var el = len(elif_clauses)
+                var j = 0
+                repeat {
+                    if j >= el { break }
+                    var clause = elif_clauses[j]
+                    collect_globals_from_stmts(clause[1])
+                    j = j + 1
+                } til j >= el
+                collect_globals_from_stmts(stmt[4])
+            } elif stype == "TryCatch" {
+                collect_globals_from_stmts(stmt[1])
+                collect_globals_from_stmts(stmt[3])
+            } elif stype == "Unsafe" {
+                collect_globals_from_stmts(stmt[1])
+            }
+        }
+        i = i + 1
+    } til i >= l
 }
 
 fn analyze_scope_types(body, params) {
@@ -1008,7 +1424,7 @@ fn llvm_escape_string(s) {
 }
 
 fn push_scope() {
-    append(g_scopes[0], [[], []])
+    append(g_scopes[0], [[], [], []])
 }
 
 fn pop_scope() {
@@ -1017,7 +1433,21 @@ fn pop_scope() {
     var scope = scopes_list[scope_idx]
     var arenas = scope[0]
     var mallocs = scope[1]
+    var owned_vars = scope[2]
     
+    // Cleanup owned variables
+    var oi = 0
+    var ol = len(owned_vars)
+    repeat {
+        if oi >= ol { break }
+        var ov = owned_vars[oi]
+        var vt = canonical_type(get_var_type(ov))
+        if not is_unboxed_type(vt) {
+            emit_inst("call void @llvm_val_drop(ptr %wyrm_var_" + ov + ")")
+        }
+        oi = oi + 1
+    } til oi >= ol
+
     // Cleanup mallocs
     var j = 0
     var ml = len(mallocs)
@@ -1050,7 +1480,21 @@ fn gen_all_cleanups() {
         var scope = scopes_list[i]
         var arenas = scope[0]
         var mallocs = scope[1]
+        var owned_vars = scope[2]
         
+        // Cleanup owned variables
+        var oi = 0
+        var ol = len(owned_vars)
+        repeat {
+            if oi >= ol { break }
+            var ov = owned_vars[oi]
+            var vt = canonical_type(get_var_type(ov))
+            if not is_unboxed_type(vt) {
+                emit_inst("call void @llvm_val_drop(ptr %wyrm_var_" + ov + ")")
+            }
+            oi = oi + 1
+        } til oi >= ol
+
         var j = 0
         var ml = len(mallocs)
         repeat {
@@ -1074,17 +1518,13 @@ fn gen_all_cleanups() {
     } til i < 0
 }
 
-
-
-fn has_dot(s) {
-    var i = 0
-    var l = len(s)
-    repeat {
-        if i >= l { break }
-        if char_at(s, i) == "." { return true }
-        i = i + 1
-    } til i >= l
-    return false
+fn get_llvm_str_constant(s) {
+    var str_idx = len(g_llvm_globals)
+    var str_name = "@.str." + str(str_idx)
+    var escaped = llvm_escape_string(s)
+    var str_len = len(s) + 1
+    append(g_llvm_globals, str_name + " = private unnamed_addr constant [" + str(str_len) + " x i8] c\"" + escaped + "\\00\", align 1")
+    return str_name
 }
 
 fn gen_expr(node) {
@@ -1105,11 +1545,7 @@ fn gen_expr(node) {
     }
     if type == "String" {
         var t = gen_temp()
-        var str_idx = len(g_llvm_globals)
-        var str_name = "@.str." + str(str_idx)
-        var escaped = llvm_escape_string(node[1])
-        var str_len = len(node[1]) + 1
-        append(g_llvm_globals, str_name + " = private unnamed_addr constant [" + str(str_len) + " x i8] c\"" + escaped + "\\00\", align 1")
+        var str_name = get_llvm_str_constant(node[1])
         emit_inst("call void @llvm_val_string(ptr " + t + ", ptr " + str_name + ")")
         return t
     }
@@ -1201,29 +1637,83 @@ fn gen_expr(node) {
     }
     if type == "Identifier" {
         var name = node[1]
-        var v_type = get_var_type(name)
-        if v_type == "Number" {
+        var v_type = canonical_type(get_var_type(name))
+        if is_unboxed_type(v_type) {
             var t = gen_temp()
-            var dbl_val = "%dbl_val_" + str(temp_count[0])
+            var llvm_t = get_llvm_type(v_type)
+            var llvm_a = get_llvm_align(v_type)
+            var raw_val = "%raw_val_" + str(temp_count[0])
             temp_count[0] = temp_count[0] + 1
             if contains_val(declared_globals[0], name) {
-                emit_inst(dbl_val + " = load double, ptr @wyrm_var_" + name + ", align 8")
+                emit_inst(raw_val + " = load " + llvm_t + ", ptr @wyrm_var_" + name + ", align " + llvm_a)
             } else {
-                emit_inst(dbl_val + " = load double, ptr %wyrm_var_" + name + ", align 8")
+                emit_inst(raw_val + " = load " + llvm_t + ", ptr %wyrm_var_" + name + ", align " + llvm_a)
             }
-            emit_inst("call void @llvm_val_number(ptr " + t + ", double " + dbl_val + ")")
-            return t
+            if v_type == "i32" {
+                var dbl_conv = "%dbl_conv_" + str(temp_count[0])
+                temp_count[0] = temp_count[0] + 1
+                emit_inst(dbl_conv + " = sitofp i32 " + raw_val + " to double")
+                emit_inst("call void @llvm_val_number(ptr " + t + ", double " + dbl_conv + ")")
+                return t
+            }
+            if v_type == "i64" {
+                emit_inst("call void @llvm_val_from_i64(ptr " + t + ", i64 " + raw_val + ")")
+                return t
+            }
+            if v_type == "u8" {
+                emit_inst("call void @llvm_val_from_u8(ptr " + t + ", i8 " + raw_val + ")")
+                return t
+            }
+            if v_type == "f32" {
+                emit_inst("call void @llvm_val_from_f32(ptr " + t + ", float " + raw_val + ")")
+                return t
+            }
+            if v_type == "f64" {
+                emit_inst("call void @llvm_val_number(ptr " + t + ", double " + raw_val + ")")
+                return t
+            }
+            if v_type == "bool" {
+                emit_inst("call void @llvm_val_from_bool(ptr " + t + ", i1 " + raw_val + ")")
+                return t
+            }
         }
-        if contains_val(declared_globals[0], name) {
+        if contains_val(declared_globals[0], name) or not in_function[0] {
             return "@wyrm_var_" + name
         }
         return "%wyrm_var_" + name
     }
     if type == "BinaryOp" {
         var op = node[1]
-        if op == "+" or op == "-" or op == "*" or op == "/" {
-            if can_gen_double(node) {
-                var dbl_res = gen_double_expr(node)
+        if op == "+" or op == "-" or op == "*" or op == "/" or op == "%" {
+            if can_gen_unboxed(node, "i32") {
+                var i32_res = gen_unboxed_expr(node, "i32")
+                var dbl_conv = "%dbl_conv_" + str(temp_count[0])
+                temp_count[0] = temp_count[0] + 1
+                emit_inst(dbl_conv + " = sitofp i32 " + i32_res + " to double")
+                var t = gen_temp()
+                emit_inst("call void @llvm_val_number(ptr " + t + ", double " + dbl_conv + ")")
+                return t
+            }
+            if can_gen_unboxed(node, "i64") {
+                var i64_res = gen_unboxed_expr(node, "i64")
+                var t = gen_temp()
+                emit_inst("call void @llvm_val_from_i64(ptr " + t + ", i64 " + i64_res + ")")
+                return t
+            }
+            if can_gen_unboxed(node, "u8") {
+                var u8_res = gen_unboxed_expr(node, "u8")
+                var t = gen_temp()
+                emit_inst("call void @llvm_val_from_u8(ptr " + t + ", i8 " + u8_res + ")")
+                return t
+            }
+            if can_gen_unboxed(node, "f32") {
+                var f32_res = gen_unboxed_expr(node, "f32")
+                var t = gen_temp()
+                emit_inst("call void @llvm_val_from_f32(ptr " + t + ", float " + f32_res + ")")
+                return t
+            }
+            if can_gen_unboxed(node, "f64") {
+                var dbl_res = gen_unboxed_expr(node, "f64")
                 var t = gen_temp()
                 emit_inst("call void @llvm_val_number(ptr " + t + ", double " + dbl_res + ")")
                 return t
@@ -1321,12 +1811,13 @@ fn gen_expr(node) {
         var t = gen_temp()
         var size_reg = gen_expr(node[2])
         var arena_name = node[1]
-        emit_inst("call void @llvm_val_raw_malloc(ptr " + t + ", ptr " + size_reg + ")")
+        emit_inst("call void @llvm_val_arena_alloc(ptr " + t + ", ptr %wyrm_arena_" + arena_name + ", ptr " + size_reg + ")")
         return t
     }
     if type == "ArenaReset" {
         var t = gen_temp()
-        emit_inst("call void @llvm_val_null(ptr " + t + ")")
+        var arena_name = node[1]
+        emit_inst("call void @llvm_val_arena_reset(ptr " + t + ", ptr %wyrm_arena_" + arena_name + ")")
         return t
     }
     if type == "FuncCall" {
@@ -1450,6 +1941,123 @@ fn gen_expr(node) {
         } elif name == "from_bytes" {
             builtin_func = "llvm_val_from_bytes"
             is_builtin = true
+        } elif name == "json_parse" {
+            builtin_func = "llvm_val_json_parse"
+            is_builtin = true
+        } elif name == "json_encode" {
+            builtin_func = "llvm_val_json_encode"
+            is_builtin = true
+        } elif name == "json_pretty" {
+            builtin_func = "llvm_val_json_pretty"
+            is_builtin = true
+        } elif name == "json_get" {
+            builtin_func = "llvm_val_json_get"
+            is_builtin = true
+        } elif name == "json_has" {
+            builtin_func = "llvm_val_json_has"
+            is_builtin = true
+        } elif name == "json_set" {
+            builtin_func = "llvm_val_json_set"
+            is_builtin = true
+        } elif name == "json_object" {
+            builtin_func = "llvm_val_json_object"
+            is_builtin = true
+        } elif name == "yaml_parse" {
+            builtin_func = "llvm_val_yaml_parse"
+            is_builtin = true
+        } elif name == "yaml_encode" {
+            builtin_func = "llvm_val_yaml_encode"
+            is_builtin = true
+        } elif name == "map_new" {
+            builtin_func = "llvm_val_map_new"
+            is_builtin = true
+        } elif name == "map_set" {
+            builtin_func = "llvm_val_map_set"
+            is_builtin = true
+        } elif name == "map_get" {
+            builtin_func = "llvm_val_map_get"
+            is_builtin = true
+        } elif name == "map_has" {
+            builtin_func = "llvm_val_map_has"
+            is_builtin = true
+        } elif name == "map_del" {
+            builtin_func = "llvm_val_map_del"
+            is_builtin = true
+        } elif name == "map_keys" {
+            builtin_func = "llvm_val_map_keys"
+            is_builtin = true
+        } elif name == "map_values" {
+            builtin_func = "llvm_val_map_values"
+            is_builtin = true
+        } elif name == "map_len" {
+            builtin_func = "llvm_val_map_len"
+            is_builtin = true
+        } elif name == "set_new" {
+            builtin_func = "llvm_val_set_new"
+            is_builtin = true
+        } elif name == "set_add" {
+            builtin_func = "llvm_val_set_add"
+            is_builtin = true
+        } elif name == "set_has" {
+            builtin_func = "llvm_val_set_has"
+            is_builtin = true
+        } elif name == "set_del" {
+            builtin_func = "llvm_val_set_del"
+            is_builtin = true
+        } elif name == "set_union" {
+            builtin_func = "llvm_val_set_union"
+            is_builtin = true
+        } elif name == "set_intersect" {
+            builtin_func = "llvm_val_set_intersect"
+            is_builtin = true
+        } elif name == "set_to_array" {
+            builtin_func = "llvm_val_set_to_array"
+            is_builtin = true
+        } elif name == "sdl_init" {
+            builtin_func = "llvm_val_sdl_init"
+            is_builtin = true
+        } elif name == "sdl_quit" {
+            builtin_func = "llvm_val_sdl_quit"
+            is_builtin = true
+        } elif name == "sdl_window" {
+            builtin_func = "llvm_val_sdl_window"
+            is_builtin = true
+        } elif name == "sdl_destroy_window" {
+            builtin_func = "llvm_val_sdl_destroy_window"
+            is_builtin = true
+        } elif name == "sdl_poll_event" {
+            builtin_func = "llvm_val_sdl_poll_event"
+            is_builtin = true
+        } elif name == "sdl_clear" {
+            builtin_func = "llvm_val_sdl_clear"
+            is_builtin = true
+        } elif name == "sdl_present" {
+            builtin_func = "llvm_val_sdl_present"
+            is_builtin = true
+        } elif name == "sdl_draw_rect" {
+            builtin_func = "llvm_val_sdl_draw_rect"
+            is_builtin = true
+        } elif name == "sdl_draw_line" {
+            builtin_func = "llvm_val_sdl_draw_line"
+            is_builtin = true
+        } elif name == "sdl_delay" {
+            builtin_func = "llvm_val_sdl_delay"
+            is_builtin = true
+        } elif name == "sdl_ticks" {
+            builtin_func = "llvm_val_sdl_ticks"
+            is_builtin = true
+        } elif name == "ffi_open" {
+            builtin_func = "llvm_val_ffi_open"
+            is_builtin = true
+        } elif name == "ffi_sym" {
+            builtin_func = "llvm_val_ffi_sym"
+            is_builtin = true
+        } elif name == "ffi_call" {
+            builtin_func = "llvm_val_ffi_call"
+            is_builtin = true
+        } elif name == "ffi_close" {
+            builtin_func = "llvm_val_ffi_close"
+            is_builtin = true
         }
         
         if is_builtin {
@@ -1477,6 +2085,39 @@ fn gen_expr(node) {
         }
         return t
     }
+    if type == "MemberAccess" {
+        var obj_node = node[1]
+        var member = node[2]
+        var obj_reg = gen_expr(obj_node)
+        var member_const = get_llvm_str_constant(member)
+        var t = gen_temp()
+        emit_inst("call void @llvm_val_struct_get(ptr " + t + ", ptr " + obj_reg + ", ptr " + member_const + ")")
+        return t
+    }
+    if type == "MethodCall" {
+        var obj_node = node[1]
+        var method = node[2]
+        var args = node[3]
+        var obj_reg = gen_expr(obj_node)
+        var num_args = len(args)
+        var arg_regs = []
+        var i = 0
+        repeat {
+            if i >= num_args { break }
+            append(arg_regs, gen_expr(args[i]))
+            i = i + 1
+        } til i >= num_args
+        var t = gen_temp()
+        var call_args = "ptr " + t + ", ptr " + obj_reg
+        var j = 0
+        repeat {
+            if j >= num_args { break }
+            call_args = call_args + ", ptr " + arg_regs[j]
+            j = j + 1
+        } til j >= num_args
+        emit_inst("call void @wyrm_fn_" + method + "(" + call_args + ")")
+        return t
+    }
     
     print("Code Generator Error: Unknown expression type '" + type + "'")
     exit(1)
@@ -1485,6 +2126,64 @@ fn gen_expr(node) {
 fn gen_statement(stmt) {
     var type = stmt[0]
     if type == "Use" {
+        return
+    }
+    if type == "MemberAssign" {
+        var obj_node = stmt[1]
+        var member = stmt[2]
+        var val = stmt[3]
+        var obj_reg = gen_expr(obj_node)
+        var val_reg = gen_expr(val)
+        var member_const = get_llvm_str_constant(member)
+        emit_inst("call void @llvm_val_struct_set(ptr " + obj_reg + ", ptr " + member_const + ", ptr " + val_reg + ")")
+        return
+    }
+    if type == "StructDef" {
+        var s_name = stmt[1]
+        var fields = stmt[2]
+        var methods = stmt[3]
+        
+        var num_f = len(fields)
+        var params_decl = "ptr %result_ptr"
+        var i = 0
+        repeat {
+            if i >= num_f { break }
+            var f_info = fields[i]
+            var f_name = f_info
+            if is_array(f_info) {
+                f_name = f_info[0]
+            }
+            params_decl = params_decl + ", ptr %arg_" + f_name
+            i = i + 1
+        } til i >= num_f
+        
+        var ctor_code = "define void @wyrm_fn_" + s_name + "(" + params_decl + ") {\n"
+        ctor_code = ctor_code + "  %s_ptr = alloca %struct.Value, align 8\n"
+        var s_name_const = get_llvm_str_constant(s_name)
+        ctor_code = ctor_code + "  call void @llvm_val_struct_create(ptr %s_ptr, ptr " + s_name_const + ", i32 " + str(num_f) + ")\n"
+        i = 0
+        repeat {
+            if i >= num_f { break }
+            var f_info = fields[i]
+            var f_name = f_info
+            if is_array(f_info) {
+                f_name = f_info[0]
+            }
+            var f_const = get_llvm_str_constant(f_name)
+            ctor_code = ctor_code + "  call void @llvm_val_struct_set(ptr %s_ptr, ptr " + f_const + ", ptr %arg_" + f_name + ")\n"
+            i = i + 1
+        } til i >= num_f
+        ctor_code = ctor_code + "  call void @llvm_val_copy(ptr %result_ptr, ptr %s_ptr)\n"
+        ctor_code = ctor_code + "  ret void\n}\n"
+        append(g_llvm_funcs, ctor_code)
+        
+        var m_idx = 0
+        var num_m = len(methods)
+        repeat {
+            if m_idx >= num_m { break }
+            gen_statement(methods[m_idx])
+            m_idx = m_idx + 1
+        } til m_idx >= num_m
         return
     }
     if type == "FuncDef" {
@@ -1566,112 +2265,168 @@ fn gen_statement(stmt) {
         return
     }
     if type == "VarDecl" {
+        var decl_kind = stmt[1]
         var name = stmt[2]
         var val = stmt[3]
-        var v_type = get_var_type(name)
-        if v_type == "Number" {
+        var explicit_t = ""
+        if len(stmt) > 4 { explicit_t = stmt[4] }
+        var v_type = canonical_type(get_var_type(name))
+        if explicit_t != "" {
+            v_type = canonical_type(explicit_t)
+            set_var_type(name, v_type)
+        }
+        
+        // Track owned variables in active scope
+        if decl_kind == "owned" {
+            var scopes_list = g_scopes[0]
+            if len(scopes_list) > 0 {
+                var scope = scopes_list[len(scopes_list) - 1]
+                append(scope[2], name)
+            }
+        }
+        
+        if is_unboxed_type(v_type) {
+            var llvm_t = get_llvm_type(v_type)
+            var llvm_a = get_llvm_align(v_type)
+            var target_ptr = ""
             if in_function[0] {
                 if not contains_val(declared_locals[0], name) {
-                    append(g_allocas[0], "  %wyrm_var_" + name + " = alloca double, align 8")
+                    append(g_allocas[0], "  %wyrm_var_" + name + " = alloca " + llvm_t + ", align " + llvm_a)
                     append(declared_locals[0], name)
                 }
-                if can_gen_double(val) {
-                    var val_reg = gen_double_expr(val)
-                    emit_inst("store double " + val_reg + ", ptr %wyrm_var_" + name + ", align 8")
-                } else {
-                    var val_reg = gen_expr(val)
-                    var union_ptr = "%union_ptr_" + str(temp_count[0])
-                    var dbl_val = "%dbl_val_" + str(temp_count[0])
-                    temp_count[0] = temp_count[0] + 1
-                    emit_inst(union_ptr + " = getelementptr %struct.Value, ptr " + val_reg + ", i32 0, i32 1")
-                    emit_inst(dbl_val + " = load double, ptr " + union_ptr + ", align 8")
-                    emit_inst("store double " + dbl_val + ", ptr %wyrm_var_" + name + ", align 8")
-                }
+                target_ptr = "%wyrm_var_" + name
             } else {
-                append(g_llvm_globals, "@wyrm_var_" + name + " = global double 0.0, align 8")
-                if can_gen_double(val) {
-                    var val_reg = gen_double_expr(val)
-                    emit_inst("store double " + val_reg + ", ptr @wyrm_var_" + name + ", align 8")
-                } else {
-                    var val_reg = gen_expr(val)
-                    var union_ptr = "%union_ptr_" + str(temp_count[0])
-                    var dbl_val = "%dbl_val_" + str(temp_count[0])
+                if not contains_val(emitted_globals[0], name) {
+                    append(g_llvm_globals, "@wyrm_var_" + name + " = global " + llvm_t + " 0, align " + llvm_a)
+                    append(emitted_globals[0], name)
+                }
+                target_ptr = "@wyrm_var_" + name
+            }
+            if can_gen_unboxed(val, v_type) {
+                var val_reg = gen_unboxed_expr(val, v_type)
+                emit_inst("store " + llvm_t + " " + val_reg + ", ptr " + target_ptr + ", align " + llvm_a)
+            } else {
+                var val_reg = gen_expr(val)
+                var union_ptr = "%union_ptr_" + str(temp_count[0])
+                var dbl_val = "%dbl_val_" + str(temp_count[0])
+                temp_count[0] = temp_count[0] + 1
+                emit_inst(union_ptr + " = getelementptr %struct.Value, ptr " + val_reg + ", i32 0, i32 1")
+                emit_inst(dbl_val + " = load double, ptr " + union_ptr + ", align 8")
+                if v_type == "i32" {
+                    var i_val = "%i32_val_" + str(temp_count[0])
                     temp_count[0] = temp_count[0] + 1
-                    emit_inst(union_ptr + " = getelementptr %struct.Value, ptr " + val_reg + ", i32 0, i32 1")
-                    emit_inst(dbl_val + " = load double, ptr " + union_ptr + ", align 8")
-                    emit_inst("store double " + dbl_val + ", ptr @wyrm_var_" + name + ", align 8")
+                    emit_inst(i_val + " = fptosi double " + dbl_val + " to i32")
+                    emit_inst("store i32 " + i_val + ", ptr " + target_ptr + ", align 4")
+                } elif v_type == "i64" {
+                    var i_val = "%i64_val_" + str(temp_count[0])
+                    temp_count[0] = temp_count[0] + 1
+                    emit_inst(i_val + " = fptosi double " + dbl_val + " to i64")
+                    emit_inst("store i64 " + i_val + ", ptr " + target_ptr + ", align 8")
+                } elif v_type == "u8" {
+                    var i_val = "%u8_val_" + str(temp_count[0])
+                    temp_count[0] = temp_count[0] + 1
+                    emit_inst(i_val + " = fptoui double " + dbl_val + " to i8")
+                    emit_inst("store i8 " + i_val + ", ptr " + target_ptr + ", align 1")
+                } elif v_type == "f32" {
+                    var f_val = "%f32_val_" + str(temp_count[0])
+                    temp_count[0] = temp_count[0] + 1
+                    emit_inst(f_val + " = fptrunc double " + dbl_val + " to float")
+                    emit_inst("store float " + f_val + ", ptr " + target_ptr + ", align 4")
+                } elif v_type == "bool" {
+                    var b_val = "%b_val_" + str(temp_count[0])
+                    temp_count[0] = temp_count[0] + 1
+                    emit_inst(b_val + " = call i1 @llvm_val_to_bool(ptr " + val_reg + ")")
+                    emit_inst("store i1 " + b_val + ", ptr " + target_ptr + ", align 1")
+                } else {
+                    emit_inst("store double " + dbl_val + ", ptr " + target_ptr + ", align 8")
+                }
+            }
+            return
+        }
+        if in_function[0] {
+            if not contains_val(declared_locals[0], name) {
+                append(g_allocas[0], "  %wyrm_var_" + name + " = alloca %struct.Value, align 8")
+                append(declared_locals[0], name)
+            }
+            var val_reg = gen_expr(val)
+            emit_inst("call void @llvm_val_copy(ptr %wyrm_var_" + name + ", ptr " + val_reg + ")")
+            
+            // Check if malloc in unsafe block for cleanup tracking
+            if in_unsafe[0] and val != null and val[0] == "FuncCall" {
+                var call_func = val[1]
+                var call_name = call_func[1]
+                if call_name == "malloc" {
+                    var scopes_list = g_scopes[0]
+                    var scope_idx = len(scopes_list) - 1
+                    var scope = scopes_list[scope_idx]
+                    var mallocs = scope[1]
+                    append(mallocs, name)
                 }
             }
         } else {
-            if in_function[0] {
-                if not contains_val(declared_locals[0], name) {
-                    append(g_allocas[0], "  %wyrm_var_" + name + " = alloca %struct.Value, align 8")
-                    append(declared_locals[0], name)
-                }
-                var val_reg = gen_expr(val)
-                emit_inst("call void @llvm_val_copy(ptr %wyrm_var_" + name + ", ptr " + val_reg + ")")
-                
-                // Check if malloc in unsafe block for cleanup tracking
-                if in_unsafe[0] and val != null and val[0] == "FuncCall" {
-                    var call_func = val[1]
-                    var call_name = call_func[1]
-                    if call_name == "malloc" {
-                        var scopes_list = g_scopes[0]
-                        var scope_idx = len(scopes_list) - 1
-                        var scope = scopes_list[scope_idx]
-                        var mallocs = scope[1]
-                        append(mallocs, name)
-                    }
-                }
-            } else {
-                // Global variables declarations go to global setup
-                var val_reg = gen_expr(val)
+            var val_reg = gen_expr(val)
+            if not contains_val(emitted_globals[0], name) {
                 append(g_llvm_globals, "@wyrm_var_" + name + " = global %struct.Value zeroinitializer, align 8")
-                emit_inst("call void @llvm_val_copy(ptr @wyrm_var_" + name + ", ptr " + val_reg + ")")
+                append(emitted_globals[0], name)
             }
+            emit_inst("call void @llvm_val_copy(ptr @wyrm_var_" + name + ", ptr " + val_reg + ")")
         }
         return
     }
     if type == "Assign" {
         var name = stmt[1]
         var val = stmt[2]
-        var v_type = get_var_type(name)
-        if v_type == "Number" {
-            if in_function[0] {
-                if can_gen_double(val) {
-                    var val_reg = gen_double_expr(val)
-                    emit_inst("store double " + val_reg + ", ptr %wyrm_var_" + name + ", align 8")
-                } else {
-                    var val_reg = gen_expr(val)
-                    var union_ptr = "%union_ptr_" + str(temp_count[0])
-                    var dbl_val = "%dbl_val_" + str(temp_count[0])
-                    temp_count[0] = temp_count[0] + 1
-                    emit_inst(union_ptr + " = getelementptr %struct.Value, ptr " + val_reg + ", i32 0, i32 1")
-                    emit_inst(dbl_val + " = load double, ptr " + union_ptr + ", align 8")
-                    emit_inst("store double " + dbl_val + ", ptr %wyrm_var_" + name + ", align 8")
-                }
-            } else {
-                if can_gen_double(val) {
-                    var val_reg = gen_double_expr(val)
-                    emit_inst("store double " + val_reg + ", ptr @wyrm_var_" + name + ", align 8")
-                } else {
-                    var val_reg = gen_expr(val)
-                    var union_ptr = "%union_ptr_" + str(temp_count[0])
-                    var dbl_val = "%dbl_val_" + str(temp_count[0])
-                    temp_count[0] = temp_count[0] + 1
-                    emit_inst(union_ptr + " = getelementptr %struct.Value, ptr " + val_reg + ", i32 0, i32 1")
-                    emit_inst(dbl_val + " = load double, ptr " + union_ptr + ", align 8")
-                    emit_inst("store double " + dbl_val + ", ptr @wyrm_var_" + name + ", align 8")
-                }
-            }
-        } else {
-            var val_reg = gen_expr(val)
-            if contains_val(declared_globals[0], name) {
-                emit_inst("call void @llvm_val_copy(ptr @wyrm_var_" + name + ", ptr " + val_reg + ")")
-            } else {
-                emit_inst("call void @llvm_val_copy(ptr %wyrm_var_" + name + ", ptr " + val_reg + ")")
-            }
+        var v_type = canonical_type(get_var_type(name))
+        var target_ptr = "%wyrm_var_" + name
+        if contains_val(declared_globals[0], name) or not in_function[0] {
+            target_ptr = "@wyrm_var_" + name
         }
+        if is_unboxed_type(v_type) {
+            var llvm_t = get_llvm_type(v_type)
+            var llvm_a = get_llvm_align(v_type)
+            if can_gen_unboxed(val, v_type) {
+                var val_reg = gen_unboxed_expr(val, v_type)
+                emit_inst("store " + llvm_t + " " + val_reg + ", ptr " + target_ptr + ", align " + llvm_a)
+            } else {
+                var val_reg = gen_expr(val)
+                var union_ptr = "%union_ptr_" + str(temp_count[0])
+                var dbl_val = "%dbl_val_" + str(temp_count[0])
+                temp_count[0] = temp_count[0] + 1
+                emit_inst(union_ptr + " = getelementptr %struct.Value, ptr " + val_reg + ", i32 0, i32 1")
+                emit_inst(dbl_val + " = load double, ptr " + union_ptr + ", align 8")
+                if v_type == "i32" {
+                    var i_val = "%i32_val_" + str(temp_count[0])
+                    temp_count[0] = temp_count[0] + 1
+                    emit_inst(i_val + " = fptosi double " + dbl_val + " to i32")
+                    emit_inst("store i32 " + i_val + ", ptr " + target_ptr + ", align 4")
+                } elif v_type == "i64" {
+                    var i_val = "%i64_val_" + str(temp_count[0])
+                    temp_count[0] = temp_count[0] + 1
+                    emit_inst(i_val + " = fptosi double " + dbl_val + " to i64")
+                    emit_inst("store i64 " + i_val + ", ptr " + target_ptr + ", align 8")
+                } elif v_type == "u8" {
+                    var i_val = "%u8_val_" + str(temp_count[0])
+                    temp_count[0] = temp_count[0] + 1
+                    emit_inst(i_val + " = fptoui double " + dbl_val + " to i8")
+                    emit_inst("store i8 " + i_val + ", ptr " + target_ptr + ", align 1")
+                } elif v_type == "f32" {
+                    var f_val = "%f32_val_" + str(temp_count[0])
+                    temp_count[0] = temp_count[0] + 1
+                    emit_inst(f_val + " = fptrunc double " + dbl_val + " to float")
+                    emit_inst("store float " + f_val + ", ptr " + target_ptr + ", align 4")
+                } elif v_type == "bool" {
+                    var b_val = "%b_val_" + str(temp_count[0])
+                    temp_count[0] = temp_count[0] + 1
+                    emit_inst(b_val + " = call i1 @llvm_val_to_bool(ptr " + val_reg + ")")
+                    emit_inst("store i1 " + b_val + ", ptr " + target_ptr + ", align 1")
+                } else {
+                    emit_inst("store double " + dbl_val + ", ptr " + target_ptr + ", align 8")
+                }
+            }
+            return
+        }
+        var val_reg = gen_expr(val)
+        emit_inst("call void @llvm_val_copy(ptr " + target_ptr + ", ptr " + val_reg + ")")
         return
     }
     if type == "IndexAssign" {
@@ -1702,11 +2457,14 @@ fn gen_statement(stmt) {
         var else_body = stmt[4]
         var num_elifs = len(elif_clauses)
         
-        var cond_reg = gen_expr(cond)
-        
         var cond_i1 = "%cond_i1_" + str(temp_count[0])
         temp_count[0] = temp_count[0] + 1
-        emit_inst(cond_i1 + " = call i1 @llvm_val_to_bool(ptr " + cond_reg + ")")
+        if can_gen_static_cmp(cond) {
+            cond_i1 = gen_static_cmp(cond)
+        } else {
+            var cond_reg = gen_expr(cond)
+            emit_inst(cond_i1 + " = call i1 @llvm_val_to_bool(ptr " + cond_reg + ")")
+        }
         
         var label_idx = temp_count[0]
         temp_count[0] = temp_count[0] + 1
@@ -1755,10 +2513,14 @@ fn gen_statement(stmt) {
             }
             
             emit_label(current_cond_label + ":")
-            var current_cond_reg = gen_expr(elif_cond)
             var current_cond_i1 = "%cond_i1_" + str(temp_count[0])
             temp_count[0] = temp_count[0] + 1
-            emit_inst(current_cond_i1 + " = call i1 @llvm_val_to_bool(ptr " + current_cond_reg + ")")
+            if can_gen_static_cmp(elif_cond) {
+                current_cond_i1 = gen_static_cmp(elif_cond)
+            } else {
+                var current_cond_reg = gen_expr(elif_cond)
+                emit_inst(current_cond_i1 + " = call i1 @llvm_val_to_bool(ptr " + current_cond_reg + ")")
+            }
             emit_inst("br i1 " + current_cond_i1 + ", label %" + current_then_label + ", label %" + next_false_label)
             
             emit_label(current_then_label + ":")
@@ -1824,10 +2586,14 @@ fn gen_statement(stmt) {
         
         emit_inst("br label %" + cond_label)
         emit_label(cond_label + ":")
-        var cond_reg = gen_expr(cond)
         var cond_i1 = "%cond_i1_" + str(temp_count[0])
         temp_count[0] = temp_count[0] + 1
-        emit_inst(cond_i1 + " = call i1 @llvm_val_to_bool(ptr " + cond_reg + ")")
+        if can_gen_static_cmp(cond) {
+            cond_i1 = gen_static_cmp(cond)
+        } else {
+            var cond_reg = gen_expr(cond)
+            emit_inst(cond_i1 + " = call i1 @llvm_val_to_bool(ptr " + cond_reg + ")")
+        }
         emit_inst("br i1 " + cond_i1 + ", label %" + merge_label + ", label %" + loop_label)
         
         emit_label(merge_label + ":")
@@ -1927,9 +2693,9 @@ fn gen_statement(stmt) {
             var target = breaks_list[size - 1]
             emit_inst("br label %" + target)
         }
-        var dummy = "unreachable_" + str(temp_count[0])
+        var dead_block = "dead_block_" + str(temp_count[0])
         temp_count[0] = temp_count[0] + 1
-        emit_label(dummy + ":")
+        emit_label(dead_block + ":")
         return
     }
     if type == "Continue" {
@@ -1940,9 +2706,9 @@ fn gen_statement(stmt) {
             var target = continues_list[size - 1]
             emit_inst("br label %" + target)
         }
-        var dummy = "unreachable_" + str(temp_count[0])
+        var dead_block = "dead_block_" + str(temp_count[0])
         temp_count[0] = temp_count[0] + 1
-        emit_label(dummy + ":")
+        emit_label(dead_block + ":")
         return
     }
     
@@ -1959,8 +2725,7 @@ fn emit_label(label) {
 }
 
 fn check_expr(expr, error_funcs, in_try_stmt, in_try_expr, in_catch_expr, func_returns_error) {
-    if expr == null { return; }
-    if type(expr) != "Array" { return; }
+    if not is_array(expr) { return; }
     var n_type = expr[0]
     
     if n_type == "FuncCall" {
@@ -1975,43 +2740,35 @@ fn check_expr(expr, error_funcs, in_try_stmt, in_try_expr, in_catch_expr, func_r
             j = j + 1
         } til j >= el
         
-        if is_err_func {
-            if not in_try_expr and not in_catch_expr {
-                print("Compiler Error: Unhandled error union returned by call to '" + name + "'")
-                exit(1)
-            }
-            if in_try_expr {
-                if not in_try_stmt and not func_returns_error {
-                    print("Compiler Error: Cannot propagate error via 'try' in a function that does not return an error union")
-                    exit(1)
-                }
-            }
+        if is_err_func and not in_try_stmt and not in_try_expr and not in_catch_expr and not func_returns_error {
+            report_diagnostic("E0004", "unhandled error: function '" + name + "' returns !Error but is called without try/catch handling", 0, 0, "wrap in try or annotate calling function with !Error")
         }
+        
         var args = expr[2]
         var i = 0
         var al = len(args)
         repeat {
             if i >= al { break }
-            check_expr(args[i], error_funcs, in_try_stmt, false, false, func_returns_error)
+            check_expr(args[i], error_funcs, in_try_stmt, in_try_expr, in_catch_expr, func_returns_error)
             i = i + 1
         } til i >= al
     } elif n_type == "TryExpr" {
-        check_expr(expr[1], error_funcs, in_try_stmt, true, false, func_returns_error)
+        check_expr(expr[1], error_funcs, in_try_stmt, true, in_catch_expr, func_returns_error)
     } elif n_type == "CatchExpr" {
-        check_expr(expr[1], error_funcs, in_try_stmt, false, true, func_returns_error)
-        check_expr(expr[2], error_funcs, in_try_stmt, false, false, func_returns_error)
+        check_expr(expr[1], error_funcs, in_try_stmt, in_try_expr, true, func_returns_error)
+        check_expr(expr[2], error_funcs, in_try_stmt, in_try_expr, false, func_returns_error)
     } elif n_type == "BinaryOp" {
-        check_expr(expr[2], error_funcs, in_try_stmt, false, false, func_returns_error)
-        check_expr(expr[3], error_funcs, in_try_stmt, false, false, func_returns_error)
+        check_expr(expr[2], error_funcs, in_try_stmt, in_try_expr, in_catch_expr, func_returns_error)
+        check_expr(expr[3], error_funcs, in_try_stmt, in_try_expr, in_catch_expr, func_returns_error)
     } elif n_type == "UnaryOp" {
-        check_expr(expr[2], error_funcs, in_try_stmt, false, false, func_returns_error)
+        check_expr(expr[2], error_funcs, in_try_stmt, in_try_expr, in_catch_expr, func_returns_error)
     } elif n_type == "Array" {
         var elems = expr[1]
         var i = 0
         var el = len(elems)
         repeat {
             if i >= el { break }
-            check_expr(elems[i], error_funcs, in_try_stmt, false, false, func_returns_error)
+            check_expr(elems[i], error_funcs, in_try_stmt, in_try_expr, in_catch_expr, func_returns_error)
             i = i + 1
         } til i >= el
     } elif n_type == "Index" {
@@ -2025,8 +2782,7 @@ fn check_expr(expr, error_funcs, in_try_stmt, in_try_expr, in_catch_expr, func_r
 }
 
 fn check_stmt(stmt, error_funcs, in_try_stmt, func_returns_error) {
-    if stmt == null { return; }
-    if type(stmt) != "Array" { return; }
+    if not is_array(stmt) { return; }
     var n_type = stmt[0]
     
     if n_type == "VarDecl" {
@@ -2123,7 +2879,7 @@ fn check_stmt(stmt, error_funcs, in_try_stmt, func_returns_error) {
 }
 
 fn check_errors(ast) {
-    var error_funcs = ["read_file"]
+    var error_funcs = []
     
     // First pass: collect error-returning function names
     var i = 0
@@ -2163,8 +2919,15 @@ fn check_errors(ast) {
 }
 
 fn transpile_llvm(ast) {
+    g_llvm_globals = []
+    g_llvm_decls = []
+    g_llvm_funcs = []
+    g_llvm_main = []
+    has_main_def[0] = false
+    temp_count[0] = 0
+    
     // Generate declarations
-    append(g_llvm_globals, "; Module generated by Wyrm 2.4.1 LLVM backend")
+    append(g_llvm_globals, "; Module generated by Wyrm 3.1.0 Self-Hosted LLVM backend")
     append(g_llvm_globals, "target datalayout = \"e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"")
     append(g_llvm_globals, "target triple = \"x86_64-pc-windows-msvc\"")
     append(g_llvm_globals, "%struct.Value = type { i32, %union.anon }")
@@ -2212,6 +2975,7 @@ fn transpile_llvm(ast) {
     append(g_llvm_decls, "declare void @llvm_val_raw_realloc(ptr, ptr, ptr)")
     append(g_llvm_decls, "declare void @llvm_val_raw_free(ptr, ptr)")
     append(g_llvm_decls, "declare void @llvm_val_raw_ptr(ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_arena_alloc(ptr, ptr, ptr)")
     append(g_llvm_decls, "declare void @llvm_val_arena_reset(ptr, ptr)")
     append(g_llvm_decls, "declare void @llvm_val_read_file(ptr, ptr)")
     append(g_llvm_decls, "declare void @llvm_val_error_val(ptr, ptr)")
@@ -2237,24 +3001,61 @@ fn transpile_llvm(ast) {
     append(g_llvm_decls, "declare ptr @val_arena_create_wrapper(ptr)")
     append(g_llvm_decls, "declare void @arena_destroy(ptr)")
     append(g_llvm_decls, "declare void @val_init_sys_args(i32, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_struct_create(ptr, ptr, i32)")
+    append(g_llvm_decls, "declare void @llvm_val_struct_get(ptr, ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_struct_set(ptr, ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_from_i64(ptr, i64)")
+    append(g_llvm_decls, "declare void @llvm_val_from_u8(ptr, i8)")
+    append(g_llvm_decls, "declare void @llvm_val_from_f32(ptr, float)")
+    append(g_llvm_decls, "declare void @llvm_val_from_bool(ptr, i1)")
+    append(g_llvm_decls, "declare void @llvm_val_drop(ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_json_parse(ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_json_encode(ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_json_pretty(ptr, ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_json_get(ptr, ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_json_has(ptr, ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_json_set(ptr, ptr, ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_json_object(ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_yaml_parse(ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_yaml_encode(ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_map_new(ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_map_set(ptr, ptr, ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_map_get(ptr, ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_map_has(ptr, ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_map_del(ptr, ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_map_keys(ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_map_values(ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_map_len(ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_set_new(ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_set_add(ptr, ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_set_has(ptr, ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_set_del(ptr, ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_set_union(ptr, ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_set_intersect(ptr, ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_set_to_array(ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_sdl_init(ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_sdl_quit(ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_sdl_window(ptr, ptr, ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_sdl_destroy_window(ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_sdl_poll_event(ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_sdl_clear(ptr, ptr, ptr, ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_sdl_present(ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_sdl_draw_rect(ptr, ptr, ptr, ptr, ptr, ptr, ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_sdl_draw_line(ptr, ptr, ptr, ptr, ptr, ptr, ptr, ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_sdl_delay(ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_sdl_ticks(ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_ffi_open(ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_ffi_sym(ptr, ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_ffi_call(ptr, ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_ffi_close(ptr, ptr)")
     append(g_llvm_decls, "@wyrm_sys_args = external global %struct.Value, align 8")
 
     declared_globals[0] = []
+    emitted_globals[0] = []
     g_main_allocas[0] = []
     g_loop_breaks[0] = []
     g_loop_continues[0] = []
-    var g_idx = 0
-    var g_len = len(ast)
-    repeat {
-        if g_idx >= g_len { break }
-        var stmt = ast[g_idx]
-        if stmt[0] == "VarDecl" {
-            append(declared_globals[0], stmt[2])
-        } elif stmt[0] == "Arena" {
-            append(declared_globals[0], stmt[1])
-        }
-        g_idx = g_idx + 1
-    } til g_idx >= g_len
+    collect_globals_from_stmts(ast)
 
     // Check if main func is defined
     var idx = 0
@@ -2350,6 +3151,9 @@ fn transpile_llvm(ast) {
 fn parse_file(path, processed_files) {
     if contains_val(processed_files, path) { return [] }
     append(processed_files, path)
+    if path == "std.json" or path == "std.yaml" or path == "std.collections" or path == "std.sdl" or path == "std.ffi" or path == "std.thread" {
+        return []
+    }
     
     // Resolve path
     var content = read_file(path)
@@ -2379,6 +3183,8 @@ fn parse_file(path, processed_files) {
     }
     
     var tokens = tokenize(content)
+    current_source_file[0] = path
+    current_source_lines[0] = split(content, "\n")
     var file_ast = parse_tokens(tokens)
     
     // Process "use" statements in file_ast
@@ -2408,22 +3214,45 @@ fn parse_file(path, processed_files) {
 
 fn main() {
     var args = sys_args()
-    print("DEBUG ARGS:", args)
-    if len(args) < 3 {
-        print("Wyrm Compiler & LLVM IR Generator (wyrmc) v2.4.1")
+    if len(args) < 2 {
+        print("wyrmc v3.1.0 (Self-Hosted)")
         print("Usage:")
-        print("  wyrmc build <file.wyr>")
-        exit(1)
+        print("  wyrmc build <file.wyr> [-o <out.exe>]")
+        print("  wyrmc run <file.wyr> [args...]")
+        print("  wyrmc --version")
+        print("  wyrmc --help")
+        exit(0)
     }
 
     var command = args[1]
-    var source_file = args[2]
-    print("DEBUG CMD:", command, "SRC:", source_file)
+    if command == "--version" or command == "-v" or command == "version" {
+        print("wyrmc v3.1.0 (Self-Hosted)")
+        exit(0)
+    }
 
-    if command != "build" {
+    if command == "--help" or command == "-h" or command == "help" {
+        print("wyrmc v3.1.0 (Self-Hosted)")
+        print("Usage:")
+        print("  wyrmc build <file.wyr> [-o <out.exe>]")
+        print("  wyrmc run <file.wyr> [args...]")
+        print("  wyrmc --version")
+        print("  wyrmc --help")
+        exit(0)
+    }
+
+    if command != "build" and command != "run" {
         print("Error: Unknown compiler command '" + command + "'")
+        print("Run 'wyrmc --help' for usage instructions.")
         exit(1)
     }
+
+    if len(args) < 3 {
+        print("Error: Missing input source file.")
+        print("Run 'wyrmc --help' for usage instructions.")
+        exit(1)
+    }
+
+    var source_file = args[2]
 
     // Determine output executable name
     var out_exe = "a.exe"
@@ -2452,12 +3281,22 @@ fn main() {
     } til i >= last_dot
     out_exe = base_name + ".exe"
 
+    if command == "run" {
+        out_exe = base_name + "_run.exe"
+    }
+
+    // Check custom output -o
+    if len(args) >= 5 {
+        if args[3] == "-o" {
+            out_exe = args[4]
+        }
+    }
+
     var temp_ll_file = base_name + "_temp.ll"
 
     // Parse source file and all its includes
     var processed = []
     var ast = parse_file(source_file, processed)
-    print("DEBUG AST:", ast)
 
     // Perform static error handling checks
     check_errors(ast)
@@ -2484,20 +3323,54 @@ fn main() {
     var runtime_c = lib_path + "wyrm_core.c"
     var arena_c = lib_path + "wyrm_arena.c"
     var str_c = lib_path + "wyrm_str.c"
+    var ffi_c = lib_path + "wyrm_ffi.c"
+    var std_json_c = lib_path + "stdlib/wyrm_std_json.c"
+    var std_yaml_c = lib_path + "stdlib/wyrm_std_yaml.c"
+    var std_sdl_c = lib_path + "stdlib/wyrm_std_sdl.c"
+    var std_coll_c = lib_path + "stdlib/wyrm_std_collections.c"
+
+    var all_runtime = "\"" + runtime_c + "\" \"" + arena_c + "\" \"" + str_c + "\" \"" + ffi_c + "\" \"" + std_json_c + "\" \"" + std_yaml_c + "\" \"" + std_sdl_c + "\" \"" + std_coll_c + "\""
+    var inc_flags = "-I\"" + lib_path + "\" -D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_DEPRECATE -Wno-deprecated-declarations -Wno-switch -Wno-override-module"
+
+    // Discover clang executable
+    var clang_cmd = "clang"
+    var test_res = system("clang --version > nul 2>&1")
+    if test_res != 0 {
+        var clang_check = read_file("C:\\Program Files\\LLVM\\bin\\clang.exe")
+        if clang_check != null {
+            clang_cmd = "\"C:\\Program Files\\LLVM\\bin\\clang.exe\""
+        }
+    }
 
     // Compile temp_ll_file + C runtime to native executable using clang
-    var compile_cmd = "\"\"C:\\Program Files\\LLVM\\bin\\clang.exe\" -O2 \"" + temp_ll_file + "\" \"" + runtime_c + "\" \"" + arena_c + "\" \"" + str_c + "\" -o \"" + out_exe + "\"\""
+    var compile_cmd = clang_cmd + " -O2 " + inc_flags + " \"" + temp_ll_file + "\" " + all_runtime + " -o \"" + out_exe + "\""
     
     // Execute clang
-    var res = system(compile_cmd)
-
-    // Clean up temporary LLVM IR file
-    var dummy_del = temp_ll_file
+    var res = system("\"" + compile_cmd + "\"")
 
     if res != 0 {
         print("Compilation Error: LLVM/clang failed to compile target executable.")
         exit(1)
     }
 
-    print("[wyrmc Compiler v2.4.1] Successfully compiled '" + source_file + "' -> Native Binary '" + out_exe + "' (via LLVM IR)")
+    if command == "run" {
+        var native_exe = ""
+        var p_idx = 0
+        var p_len = len(out_exe)
+        repeat {
+            if p_idx >= p_len { break }
+            var ch = char_at(out_exe, p_idx)
+            if ch == "/" {
+                native_exe = native_exe + "\\"
+            } else {
+                native_exe = native_exe + ch
+            }
+            p_idx = p_idx + 1
+        } til p_idx >= p_len
+        var run_cmd = "\"" + native_exe + "\""
+        var run_res = system(run_cmd)
+        exit(run_res)
+    }
+
+    print("[wyrmc v3.1.0] Successfully compiled '" + source_file + "' -> Native Binary '" + out_exe + "'")
 }

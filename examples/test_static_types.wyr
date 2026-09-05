@@ -1,0 +1,9 @@
+fn main() {
+    var count: i32 = 0
+    var sum: i32 = 0
+    repeat {
+        sum = sum + count
+        count = count + 1
+    } til count > 10
+    print("Static i32 sum (0..10):", sum)
+}

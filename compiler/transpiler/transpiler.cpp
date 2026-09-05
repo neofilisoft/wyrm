@@ -21,8 +21,12 @@ std::string Transpiler::load_c_runtime() {
     std::string lib_dir = home_dir + "/.wyrm/packages/wyrmlang/lib/";
     
     std::vector<std::string> files = {
-        "wyrm_core.h", "wyrm_arena.h", "wyrm_str.h",
-        "wyrm_core.c", "wyrm_arena.c", "wyrm_str.c"
+        "wyrm_core.h", "wyrm_arena.h", "wyrm_str.h", "wyrm_ffi.h",
+        "stdlib/wyrm_std_json.h", "stdlib/wyrm_std_yaml.h",
+        "stdlib/wyrm_std_sdl.h", "stdlib/wyrm_std_collections.h",
+        "wyrm_core.c", "wyrm_arena.c", "wyrm_str.c", "wyrm_ffi.c",
+        "stdlib/wyrm_std_json.c", "stdlib/wyrm_std_yaml.c",
+        "stdlib/wyrm_std_sdl.c", "stdlib/wyrm_std_collections.c"
     };
 
     std::string result;
@@ -45,9 +49,11 @@ std::string Transpiler::load_c_runtime() {
             if (idx != std::string::npos) {
                 std::string stripped = line.substr(idx);
                 if (stripped.rfind("#include \"wyrm_", 0) == 0) continue;
+                if (stripped.rfind("#include \"../wyrm_", 0) == 0) continue;
+                if (stripped.rfind("#include \"stdlib/", 0) == 0) continue;
                 if (stripped.rfind("#ifndef WYRM_", 0) == 0) continue;
                 if (stripped.rfind("#define WYRM_", 0) == 0) continue;
-                if (stripped.rfind("#endif // WYRM_", 0) == 0) continue;
+                if (stripped.rfind("#endif", 0) == 0 && stripped.find("WYRM_") != std::string::npos) continue;
             }
             result += line + "\n";
         }
@@ -138,6 +144,24 @@ std::string Transpiler::transpile(std::vector<ASTNodePtr>& ast) {
     }
 
     header_lines.push_back("\n// Global variable declarations");
+    for (const auto& stmt : ast) {
+        auto* assign = dynamic_cast<AssignmentNode*>(stmt.get());
+        if (assign && assign->is_declaration) {
+            std::string g_name = assign->var_name->name;
+            if (!declared_globals.count(g_name)) {
+                declared_globals.insert(g_name);
+                header_lines.push_back("Value wyrm_var_" + g_name + ";");
+            }
+        }
+        auto* owned = dynamic_cast<OwnedDeclNode*>(stmt.get());
+        if (owned) {
+            std::string g_name = owned->var_name->name;
+            if (!declared_globals.count(g_name)) {
+                declared_globals.insert(g_name);
+                header_lines.push_back("Value wyrm_var_" + g_name + ";  /* owned global */");
+            }
+        }
+    }
 
     for (const auto& stmt : ast) {
         if (has_main_def) {
@@ -278,14 +302,14 @@ void Transpiler::visit(AssignmentNode* node) {
                 scopes.back().allocations.push_back(var_name);
             }
         } else {
-            if (!declared_locals.count(var_name)) {
+            if (declared_locals.count(var_name) || declared_globals.count(var_name)) {
+                emit(c_var + " = " + val_expr + ";");
+            } else {
                 declared_locals.insert(var_name);
                 emit("Value " + c_var + " = " + val_expr + ";");
                 if (is_malloc && !scopes.empty()) {
                     scopes.back().allocations.push_back(var_name);
                 }
-            } else {
-                emit(c_var + " = " + val_expr + ";");
             }
         }
     } else {
@@ -530,6 +554,10 @@ void Transpiler::visit(ReturnNode* node) {
 
 void Transpiler::visit(UseNode* node) {
     std::string raw_path = node->module_path;
+    if (raw_path == "std.ffi" || raw_path == "std.json" || raw_path == "std.yaml" ||
+        raw_path == "std.sdl" || raw_path == "std.thread" || raw_path == "std.collections") {
+        return;
+    }
     std::vector<std::string> possible_paths;
     possible_paths.push_back(raw_path);
     possible_paths.push_back(raw_path + ".wyr");

@@ -216,6 +216,92 @@ void test_parse_struct() {
     std::cout << "test_parse_struct passed!" << std::endl;
 }
 
+void test_parse_type_annotations() {
+    std::cout << "Running test_parse_type_annotations..." << std::endl;
+    std::string_view code = 
+        "var count: i32 = 42\n"
+        "var big_num: i64 = 9000000000\n"
+        "var small_val: u8 = 255\n"
+        "var flag: bool = true\n"
+        "var flt: f32 = 3.14\n"
+        "owned var ptr_data: i64 = 1000\n"
+        "fn add(a: i32, b: i32): i32 {\n"
+        "    return a + b\n"
+        "}\n"
+        "struct Particle {\n"
+        "    x: f64,\n"
+        "    y: f64,\n"
+        "    fn move(self, dx: f64, dy: f64) {\n"
+        "        self.x = self.x + dx\n"
+        "    }\n"
+        "}\n";
+    Lexer lexer(code);
+    auto tokens = lexer.tokenize();
+    Parser parser(tokens);
+    auto stmts = parser.parse();
+
+    assert(stmts.size() == 8);
+
+    // 1. var count: i32 = 42
+    auto* var_decl = dynamic_cast<AssignmentNode*>(stmts[0].get());
+    assert(var_decl != nullptr);
+    assert(var_decl->var_name->name == "count");
+    assert(var_decl->type_annotation == "i32");
+
+    // 2. var big_num: i64 = 9000000000
+    auto* i64_decl = dynamic_cast<AssignmentNode*>(stmts[1].get());
+    assert(i64_decl != nullptr);
+    assert(i64_decl->var_name->name == "big_num");
+    assert(i64_decl->type_annotation == "i64");
+
+    // 3. var small_val: u8 = 255
+    auto* u8_decl = dynamic_cast<AssignmentNode*>(stmts[2].get());
+    assert(u8_decl != nullptr);
+    assert(u8_decl->var_name->name == "small_val");
+    assert(u8_decl->type_annotation == "u8");
+
+    // 4. var flag: bool = true
+    auto* bool_decl = dynamic_cast<AssignmentNode*>(stmts[3].get());
+    assert(bool_decl != nullptr);
+    assert(bool_decl->var_name->name == "flag");
+    assert(bool_decl->type_annotation == "bool");
+
+    // 5. var flt: f32 = 3.14
+    auto* f32_decl = dynamic_cast<AssignmentNode*>(stmts[4].get());
+    assert(f32_decl != nullptr);
+    assert(f32_decl->var_name->name == "flt");
+    assert(f32_decl->type_annotation == "f32");
+
+    // 6. owned var ptr_data: i64 = 1000
+    auto* owned_decl = dynamic_cast<OwnedDeclNode*>(stmts[5].get());
+    assert(owned_decl != nullptr);
+    assert(owned_decl->var_name->name == "ptr_data");
+    assert(owned_decl->type_annotation == "i64");
+
+    // 7. fn add(a: i32, b: i32): i32
+    auto* fn_def = dynamic_cast<FunctionDefNode*>(stmts[6].get());
+    assert(fn_def != nullptr);
+    assert(fn_def->name->name == "add");
+    assert(fn_def->params.size() == 2);
+    assert(fn_def->params[0]->name == "a");
+    assert(fn_def->param_types.size() == 2);
+    assert(fn_def->param_types[0] == "i32");
+    assert(fn_def->param_types[1] == "i32");
+    assert(fn_def->return_type == "i32");
+
+    // 8. struct Particle
+    auto* s_def = dynamic_cast<StructDefNode*>(stmts[7].get());
+    assert(s_def != nullptr);
+    assert(s_def->name == "Particle");
+    assert(s_def->fields.size() == 2);
+    assert(s_def->fields[0] == "x");
+    assert(s_def->field_types.size() == 2);
+    assert(s_def->field_types[0] == "f64");
+    assert(s_def->field_types[1] == "f64");
+
+    std::cout << "test_parse_type_annotations passed!" << std::endl;
+}
+
 int main() {
     std::cout << "=== Running Wyrm Parser Native C++20 Tests ===" << std::endl;
     test_parse_arithmetic();
@@ -226,6 +312,7 @@ int main() {
     test_parse_arena_stmt();
     test_parse_unsafe_owned();
     test_parse_struct();
+    test_parse_type_annotations();
     std::cout << "=== All Parser Tests Passed Successfully ===" << std::endl;
     return 0;
 }

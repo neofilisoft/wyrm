@@ -200,12 +200,10 @@ static Value yaml_parse_node(YamlParser *p, int base_indent) {
                 /* Inline value is empty - next indented block is the value */
                 Value child = yaml_parse_node(p, this_indent + 2);
                 arr = val_array_append(arr, child);
-                val_drop(child);
             } else {
                 /* Inline scalar value */
                 Value item = yaml_parse_scalar(item_str);
                 arr = val_array_append(arr, item);
-                val_drop(item);
             }
         }
         return arr;

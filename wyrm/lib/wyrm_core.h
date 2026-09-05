@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <math.h>
 #include <stdarg.h>
+#include <stdint.h>
 
 typedef enum {
     VAL_NULL,
@@ -111,6 +112,8 @@ Value val_raw_malloc(Value size);
 Value val_raw_realloc(Value ptr, Value size);
 Value val_raw_free(Value ptr);
 Value val_raw_ptr(void *p);
+Value val_arena_alloc(WyrmArena *a, Value size);
+Value val_arena_reset(WyrmArena *a);
 
 extern Value wyrm_sys_args;
 void val_init_sys_args(int argc, char *argv[]);
@@ -180,6 +183,7 @@ void llvm_val_raw_malloc(Value *res, Value *size);
 void llvm_val_raw_realloc(Value *res, Value *ptr, Value *size);
 void llvm_val_raw_free(Value *res, Value *ptr);
 void llvm_val_raw_ptr(Value *res, void *p);
+void llvm_val_arena_alloc(Value *res, WyrmArena *a, Value *size);
 void llvm_val_arena_reset(Value *res, WyrmArena *a);
 void llvm_val_read_file(Value *res, Value *path);
 void llvm_val_error_val(Value *res, Value *msg);
@@ -205,5 +209,59 @@ void llvm_val_to_bytes(Value *res, Value *a);
 void llvm_val_from_bytes(Value *res, Value *a);
 void llvm_val_copy(Value *dest, Value *src);
 WyrmArena* val_arena_create_wrapper(Value *size);
+void llvm_val_struct_create(Value *res, const char *type_name, int field_count);
+void llvm_val_struct_get(Value *res, Value *s, const char *field_name);
+void llvm_val_struct_set(Value *s, const char *field_name, Value *val);
+void llvm_val_from_i64(Value *res, int64_t v);
+void llvm_val_from_u8(Value *res, uint8_t v);
+void llvm_val_from_f32(Value *res, float v);
+void llvm_val_from_bool(Value *res, bool v);
+void llvm_val_drop(Value *v);
+
+// Standard library wrappers
+void llvm_val_json_parse(Value *res, Value *s);
+void llvm_val_json_encode(Value *res, Value *v);
+void llvm_val_json_pretty(Value *res, Value *v, Value *indent);
+void llvm_val_json_get(Value *res, Value *obj, Value *key);
+void llvm_val_json_has(Value *res, Value *obj, Value *key);
+void llvm_val_json_set(Value *res, Value *obj, Value *key, Value *val);
+void llvm_val_json_object(Value *res);
+
+void llvm_val_yaml_parse(Value *res, Value *s);
+void llvm_val_yaml_encode(Value *res, Value *v);
+
+void llvm_val_map_new(Value *res);
+void llvm_val_map_set(Value *res, Value *m, Value *k, Value *v);
+void llvm_val_map_get(Value *res, Value *m, Value *k);
+void llvm_val_map_has(Value *res, Value *m, Value *k);
+void llvm_val_map_del(Value *res, Value *m, Value *k);
+void llvm_val_map_keys(Value *res, Value *m);
+void llvm_val_map_values(Value *res, Value *m);
+void llvm_val_map_len(Value *res, Value *m);
+
+void llvm_val_set_new(Value *res);
+void llvm_val_set_add(Value *res, Value *s, Value *v);
+void llvm_val_set_has(Value *res, Value *s, Value *v);
+void llvm_val_set_del(Value *res, Value *s, Value *v);
+void llvm_val_set_union(Value *res, Value *a, Value *b);
+void llvm_val_set_intersect(Value *res, Value *a, Value *b);
+void llvm_val_set_to_array(Value *res, Value *s);
+
+void llvm_val_sdl_init(Value *res);
+void llvm_val_sdl_quit(Value *res);
+void llvm_val_sdl_window(Value *res, Value *title, Value *w, Value *h);
+void llvm_val_sdl_destroy_window(Value *res, Value *win);
+void llvm_val_sdl_poll_event(Value *res);
+void llvm_val_sdl_clear(Value *res, Value *win, Value *r, Value *g, Value *b);
+void llvm_val_sdl_present(Value *res, Value *win);
+void llvm_val_sdl_draw_rect(Value *res, Value *win, Value *x, Value *y, Value *w, Value *h, Value *r, Value *g, Value *b);
+void llvm_val_sdl_draw_line(Value *res, Value *win, Value *x1, Value *y1, Value *x2, Value *y2, Value *r, Value *g, Value *b);
+void llvm_val_sdl_delay(Value *res, Value *ms);
+void llvm_val_sdl_ticks(Value *res);
+
+void llvm_val_ffi_open(Value *res, Value *path);
+void llvm_val_ffi_sym(Value *res, Value *lib, Value *sym);
+void llvm_val_ffi_call(Value *res, Value *fn_ptr, Value *args);
+void llvm_val_ffi_close(Value *res, Value *lib);
 
 #endif // WYRM_CORE_H

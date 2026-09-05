@@ -178,7 +178,6 @@ static Value parse_array(JsonParser *p) {
         Value elem = parse_value(p);
         if (elem.type == VAL_ERROR) { val_drop(arr); return elem; }
         arr = val_array_append(arr, elem);
-        val_drop(elem);
         skip_whitespace(p);
         if (peek(p) == ']') { p->pos++; return arr; }
         if (!expect_char(p, ',')) { val_drop(arr); return val_error(p->error); }
@@ -214,9 +213,7 @@ static Value parse_object(JsonParser *p) {
         if (val.type == VAL_ERROR) { val_drop(key); val_drop(obj); return val; }
 
         obj = val_array_append(obj, key);
-        val_drop(key);
         obj = val_array_append(obj, val);
-        val_drop(val);
 
         skip_whitespace(p);
         if (peek(p) == '}') { p->pos++; return obj; }

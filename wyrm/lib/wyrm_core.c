@@ -1,6 +1,11 @@
 #include "wyrm_core.h"
 #include "wyrm_arena.h"
 #include "wyrm_str.h"
+#include "wyrm_ffi.h"
+#include "stdlib/wyrm_std_json.h"
+#include "stdlib/wyrm_std_yaml.h"
+#include "stdlib/wyrm_std_sdl.h"
+#include "stdlib/wyrm_std_collections.h"
 
 void wyrm_check_oom(void *ptr, const char *context) {
     if (!ptr) {
@@ -51,6 +56,10 @@ Value val_error_val(Value msg) {
 }
 
 Value val_array_create(int count) {
+    if (count < 0) {
+        fprintf(stderr, "Fatal Runtime Error: val_array_create called with negative count: %d\n", count);
+        exit(1);
+    }
     Value v;
     v.type = VAL_ARRAY;
     v.as.array = (ValArray*)malloc(sizeof(ValArray));
@@ -58,8 +67,12 @@ Value val_array_create(int count) {
     v.as.array->size = count;
     v.as.array->capacity = count > 0 ? count : 0;
     if (count > 0) {
-        v.as.array->data = (Value*)malloc((size_t)count * sizeof(Value));
-        wyrm_check_oom(v.as.array->data, "val_array_create (array data)");
+        size_t alloc_bytes = (size_t)count * sizeof(Value);
+        v.as.array->data = (Value*)malloc(alloc_bytes);
+        if (!v.as.array->data) {
+            fprintf(stderr, "Fatal Runtime Error: Out of memory in val_array_create (count=%d, bytes=%zu)\n", count, alloc_bytes);
+            exit(1);
+        }
         // Initialize all elements to null to prevent reading garbage memory
         for (int i = 0; i < count; i++) {
             v.as.array->data[i].type = VAL_NULL;
@@ -122,8 +135,9 @@ char* val_to_str_ptr(Value v) {
             strcpy(res, "[");
             for (int i = 0; i < v.as.array->size; i++) {
                 char *item_str = val_to_str_ptr(v.as.array->data[i]);
-                if ((int)(strlen(res) + strlen(item_str) + 4) > cap) {
-                    cap = cap * 2 + strlen(item_str);
+                size_t need = strlen(res) + strlen(item_str) + 4;
+                if ((int)need >= cap) {
+                    cap = (int)need * 2;
                     res = realloc(res, cap);
                     wyrm_check_oom(res, "val_to_str_ptr (array formatting buffer reallocation)");
                 }
@@ -147,7 +161,7 @@ char* val_to_str_ptr(Value v) {
                 char *item_str = val_to_str_ptr(st->fields[i]);
                 const char *fname = st->field_names && st->field_names[i] ? st->field_names[i] : "";
                 int need = (int)(strlen(res) + strlen(fname) + strlen(item_str) + 8);
-                if (need > cap) {
+                if (need >= cap) {
                     cap = need * 2;
                     res = realloc(res, cap);
                     wyrm_check_oom(res, "val_to_str_ptr (struct formatting buffer reallocation)");
@@ -426,6 +440,13 @@ Value val_not(Value a) {
 }
 
 Value val_array_get(Value arr, Value index) {
+    if (index.type == VAL_STRING) {
+        if (json_is_object(arr)) {
+            return json_get(arr, index);
+        } else if (arr.type == VAL_RAW_PTR && arr.as.raw_ptr) {
+            return map_get(arr, index);
+        }
+    }
     if (index.type != VAL_NUMBER) {
         fprintf(stderr, "Runtime Error: Array/string index must be a number, got type '%s'\n",
                 index.type == VAL_STRING ? "string" :
@@ -459,6 +480,15 @@ Value val_array_get(Value arr, Value index) {
 }
 
 Value val_array_set(Value arr, Value index, Value val) {
+    if (index.type == VAL_STRING) {
+        if (json_is_object(arr)) {
+            json_set(arr, index, val);
+            return val;
+        } else if (arr.type == VAL_RAW_PTR && arr.as.raw_ptr) {
+            map_set(arr, index, val);
+            return val;
+        }
+    }
     if (arr.type != VAL_ARRAY) {
         fprintf(stderr, "Runtime Error: Object is not subscriptable\n");
         exit(1);
@@ -478,7 +508,6 @@ Value val_array_set(Value arr, Value index, Value val) {
         fprintf(stderr, "Runtime Error: Array index out of bounds: %d\n", idx);
         exit(1);
     }
-    val_drop(arr.as.array->data[idx]); // free the old element before overwriting
     arr.as.array->data[idx] = val;
     return val;
 }
@@ -685,6 +714,15 @@ Value val_struct_set(Value s, const char *field_name, Value new_val) {
             return s;
         }
     }
+    for (int i = 0; i < st->field_count; i++) {
+        if (st->field_names[i] && st->field_names[i][0] == '\0') {
+            free(st->field_names[i]);
+            st->field_names[i] = strdup(field_name);
+            val_drop(st->fields[i]);
+            st->fields[i] = val_copy(new_val);
+            return s;
+        }
+    }
     return s;
 }
 
@@ -787,6 +825,18 @@ Value val_raw_ptr(void *p) {
     return v;
 }
 
+Value val_arena_alloc(WyrmArena *a, Value size) {
+    if (size.type != VAL_NUMBER) {
+        fprintf(stderr, "Runtime Error: arena alloc size must be a number\n");
+        return val_null();
+    }
+    void *ptr = arena_alloc(a, (size_t)size.as.number);
+    Value v;
+    v.type = VAL_RAW_PTR;
+    v.as.raw_ptr = ptr;
+    return v;
+}
+
 Value val_arena_reset(WyrmArena *a) {
     arena_reset(a);
     Value v;
@@ -814,7 +864,7 @@ Value val_read_file(Value path) {
     }
     FILE *f = fopen(path.as.string, "rb");
     if (!f) {
-        return val_error("Cannot open file");
+        return val_null();
     }
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
@@ -948,6 +998,7 @@ void llvm_val_raw_malloc(Value *res, Value *size) { *res = val_raw_malloc(*size)
 void llvm_val_raw_realloc(Value *res, Value *ptr, Value *size) { *res = val_raw_realloc(*ptr, *size); }
 void llvm_val_raw_free(Value *res, Value *ptr) { *res = val_raw_free(*ptr); }
 void llvm_val_raw_ptr(Value *res, void *p) { *res = val_raw_ptr(p); }
+void llvm_val_arena_alloc(Value *res, WyrmArena *a, Value *size) { *res = val_arena_alloc(a, *size); }
 void llvm_val_arena_reset(Value *res, WyrmArena *a) { *res = val_arena_reset(a); }
 
 void llvm_val_read_file(Value *res, Value *path) { *res = val_read_file(*path); }
@@ -981,4 +1032,82 @@ WyrmArena* val_arena_create_wrapper(Value *size) {
     }
     return arena_create((size_t)size->as.number);
 }
+
+void llvm_val_struct_create(Value *res, const char *type_name, int field_count) {
+    *res = val_struct_create(type_name, field_count, NULL, NULL);
+}
+
+void llvm_val_struct_get(Value *res, Value *s, const char *field_name) {
+    *res = val_struct_get(*s, field_name);
+}
+
+void llvm_val_struct_set(Value *s, const char *field_name, Value *val) {
+    *s = val_struct_set(*s, field_name, *val);
+}
+
+void llvm_val_from_i64(Value *res, int64_t v) {
+    *res = val_number((double)v);
+}
+
+void llvm_val_from_u8(Value *res, uint8_t v) {
+    *res = val_number((double)v);
+}
+
+void llvm_val_from_f32(Value *res, float v) {
+    *res = val_number((double)v);
+}
+
+void llvm_val_from_bool(Value *res, bool v) {
+    *res = val_bool(v);
+}
+
+void llvm_val_drop(Value *v) {
+    val_drop(*v);
+}
+
+// Standard library wrappers
+void llvm_val_json_parse(Value *res, Value *s) { *res = json_parse(*s); }
+void llvm_val_json_encode(Value *res, Value *v) { *res = json_encode(*v); }
+void llvm_val_json_pretty(Value *res, Value *v, Value *indent) { *res = json_pretty(*v, *indent); }
+void llvm_val_json_get(Value *res, Value *obj, Value *key) { *res = json_get(*obj, *key); }
+void llvm_val_json_has(Value *res, Value *obj, Value *key) { *res = json_has(*obj, *key); }
+void llvm_val_json_set(Value *res, Value *obj, Value *key, Value *val) { *res = json_set(*obj, *key, *val); }
+void llvm_val_json_object(Value *res) { *res = json_object(); }
+
+void llvm_val_yaml_parse(Value *res, Value *s) { *res = yaml_parse(*s); }
+void llvm_val_yaml_encode(Value *res, Value *v) { *res = yaml_encode(*v); }
+
+void llvm_val_map_new(Value *res) { *res = map_new(); }
+void llvm_val_map_set(Value *res, Value *m, Value *k, Value *v) { *res = map_set(*m, *k, *v); }
+void llvm_val_map_get(Value *res, Value *m, Value *k) { *res = map_get(*m, *k); }
+void llvm_val_map_has(Value *res, Value *m, Value *k) { *res = map_has(*m, *k); }
+void llvm_val_map_del(Value *res, Value *m, Value *k) { *res = map_del(*m, *k); }
+void llvm_val_map_keys(Value *res, Value *m) { *res = map_keys(*m); }
+void llvm_val_map_values(Value *res, Value *m) { *res = map_values(*m); }
+void llvm_val_map_len(Value *res, Value *m) { *res = map_len(*m); }
+
+void llvm_val_set_new(Value *res) { *res = set_new(); }
+void llvm_val_set_add(Value *res, Value *s, Value *v) { *res = set_add(*s, *v); }
+void llvm_val_set_has(Value *res, Value *s, Value *v) { *res = set_has(*s, *v); }
+void llvm_val_set_del(Value *res, Value *s, Value *v) { *res = set_del(*s, *v); }
+void llvm_val_set_union(Value *res, Value *a, Value *b) { *res = set_union_fn(*a, *b); }
+void llvm_val_set_intersect(Value *res, Value *a, Value *b) { *res = set_intersect(*a, *b); }
+void llvm_val_set_to_array(Value *res, Value *s) { *res = set_to_array(*s); }
+
+void llvm_val_sdl_init(Value *res) { *res = sdl_init(); }
+void llvm_val_sdl_quit(Value *res) { *res = sdl_quit(); }
+void llvm_val_sdl_window(Value *res, Value *title, Value *w, Value *h) { *res = sdl_window(*title, *w, *h); }
+void llvm_val_sdl_destroy_window(Value *res, Value *win) { *res = sdl_destroy_window(*win); }
+void llvm_val_sdl_poll_event(Value *res) { *res = sdl_poll_event(); }
+void llvm_val_sdl_clear(Value *res, Value *win, Value *r, Value *g, Value *b) { *res = sdl_clear(*win, *r, *g, *b); }
+void llvm_val_sdl_present(Value *res, Value *win) { *res = sdl_present(*win); }
+void llvm_val_sdl_draw_rect(Value *res, Value *win, Value *x, Value *y, Value *w, Value *h, Value *r, Value *g, Value *b) { *res = sdl_draw_rect(*win, *x, *y, *w, *h, *r, *g, *b); }
+void llvm_val_sdl_draw_line(Value *res, Value *win, Value *x1, Value *y1, Value *x2, Value *y2, Value *r, Value *g, Value *b) { *res = sdl_draw_line(*win, *x1, *y1, *x2, *y2, *r, *g, *b); }
+void llvm_val_sdl_delay(Value *res, Value *ms) { *res = sdl_delay(*ms); }
+void llvm_val_sdl_ticks(Value *res) { *res = sdl_ticks(); }
+
+void llvm_val_ffi_open(Value *res, Value *path) { *res = ffi_open(*path); }
+void llvm_val_ffi_sym(Value *res, Value *lib, Value *sym) { *res = ffi_sym(*lib, *sym); }
+void llvm_val_ffi_call(Value *res, Value *fn_ptr, Value *args) { *res = ffi_call_fn(*fn_ptr, *args); }
+void llvm_val_ffi_close(Value *res, Value *lib) { *res = ffi_close(*lib); }
 

@@ -130,7 +130,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     if (!fgets(version, sizeof(version), vf)) {
-        strcpy(version, "2.4.1");
+        strcpy(version, "3.1.0");
     }
     fclose(vf);
 
@@ -202,15 +202,24 @@ int main(int argc, char *argv[]) {
              " \"%s\\wyrm_core.o\" \"%s\\wyrm_arena.o\" \"%s\\wyrm_str.o\""
              " \"%s\\wyrm_ffi.o\" \"%s\\wyrm_std_json.o\" \"%s\\wyrm_std_yaml.o\""
              " \"%s\\wyrm_std_sdl.o\" \"%s\\wyrm_std_collections.o\""
-             " -o \"%s\\wyrmc.exe\""
+             " -o \"%s\\wyrmc_stage0.exe\""
              " -DWYRM_VERSION=\\\"%s\\\" -DWYRMC_VERSION=\\\"%s\\\"",
              workspace, workspace, workspace, workspace, workspace, workspace, workspace,
              install_root, install_root, install_root,
              install_root, install_root, install_root,
              install_root, install_root,
-             wyrmc_dir, version, version);
+             install_root, version, version);
     if (system(build_cmd) != 0) {
-        fprintf(stderr, "Error: Failed to compile wyrmc.exe. Please ensure g++ is installed and available in PATH.\n");
+        fprintf(stderr, "Error: Failed to compile Stage 0 bootstrap compiler. Please ensure g++ is installed and available in PATH.\n");
+        return 1;
+    }
+
+    printf("Compiling self-hosted compiler (compiler/wyrmc.wyr) -> wyrmc.exe...\n");
+    snprintf(build_cmd, sizeof(build_cmd),
+             "\"%s\\wyrmc_stage0.exe\" build \"%s\\compiler\\wyrmc.wyr\" -o \"%s\\wyrmc.exe\"",
+             install_root, workspace, wyrmc_dir);
+    if (system(build_cmd) != 0) {
+        fprintf(stderr, "Error: Failed to compile self-hosted wyrmc from compiler/wyrmc.wyr.\n");
         return 1;
     }
 

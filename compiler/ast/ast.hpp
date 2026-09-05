@@ -89,9 +89,10 @@ public:
     ASTNodePtr value;
     bool is_declaration;
     std::string declaration_type; // "var", "dec", or ""
+    std::string type_annotation;  // e.g. "i32", "f64", "string", or ""
 
-    AssignmentNode(std::unique_ptr<IdentifierNode> name, ASTNodePtr val, bool is_decl = false, std::string decl_type = "")
-        : var_name(std::move(name)), value(std::move(val)), is_declaration(is_decl), declaration_type(std::move(decl_type)) {}
+    AssignmentNode(std::unique_ptr<IdentifierNode> name, ASTNodePtr val, bool is_decl = false, std::string decl_type = "", std::string type_ann = "")
+        : var_name(std::move(name)), value(std::move(val)), is_declaration(is_decl), declaration_type(std::move(decl_type)), type_annotation(std::move(type_ann)) {}
     void accept(ASTVisitor* visitor) override;
 };
 
@@ -133,9 +134,13 @@ public:
     std::unique_ptr<IdentifierNode> name;
     std::vector<std::unique_ptr<IdentifierNode>> params;
     std::vector<ASTNodePtr> body;
+    std::vector<std::string> param_types;
+    std::string return_type;
 
-    FunctionDefNode(std::unique_ptr<IdentifierNode> n, std::vector<std::unique_ptr<IdentifierNode>> p, std::vector<ASTNodePtr> b)
-        : name(std::move(n)), params(std::move(p)), body(std::move(b)) {}
+    FunctionDefNode(std::unique_ptr<IdentifierNode> n, std::vector<std::unique_ptr<IdentifierNode>> p, std::vector<ASTNodePtr> b,
+                    std::vector<std::string> p_types = {}, std::string ret_t = "")
+        : name(std::move(n)), params(std::move(p)), body(std::move(b)),
+          param_types(std::move(p_types)), return_type(std::move(ret_t)) {}
     void accept(ASTVisitor* visitor) override;
 };
 
@@ -227,9 +232,10 @@ public:
     std::unique_ptr<IdentifierNode> var_name;
     ASTNodePtr value;
     std::string declaration_type; // "var" or "dec"
+    std::string type_annotation;
 
-    OwnedDeclNode(std::unique_ptr<IdentifierNode> name, ASTNodePtr val, std::string decl_type = "var")
-        : var_name(std::move(name)), value(std::move(val)), declaration_type(std::move(decl_type)) {}
+    OwnedDeclNode(std::unique_ptr<IdentifierNode> name, ASTNodePtr val, std::string decl_type = "var", std::string type_ann = "")
+        : var_name(std::move(name)), value(std::move(val)), declaration_type(std::move(decl_type)), type_annotation(std::move(type_ann)) {}
     void accept(ASTVisitor* visitor) override;
 };
 
@@ -265,10 +271,11 @@ class StructDefNode : public ASTNode {
 public:
     std::string name;
     std::vector<std::string> fields;
+    std::vector<std::string> field_types;
     std::vector<std::unique_ptr<FunctionDefNode>> methods;
 
-    StructDefNode(std::string n, std::vector<std::string> f, std::vector<std::unique_ptr<FunctionDefNode>> m)
-        : name(std::move(n)), fields(std::move(f)), methods(std::move(m)) {}
+    StructDefNode(std::string n, std::vector<std::string> f, std::vector<std::unique_ptr<FunctionDefNode>> m, std::vector<std::string> f_types = {})
+        : name(std::move(n)), fields(std::move(f)), field_types(std::move(f_types)), methods(std::move(m)) {}
     void accept(ASTVisitor* visitor) override;
 };
 

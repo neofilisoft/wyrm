@@ -1,0 +1,48 @@
+fn test_integers() {
+    var a: i64 = 5000000000
+    var b: i64 = 4000000000
+    var sum_i64: i64 = a + b
+    print("i64 sum:", sum_i64)
+
+    var u: u8 = 200
+    var add_val: u8 = 55
+    var total_u8: u8 = u + add_val
+    print("u8 total:", total_u8)
+
+    var count: i64 = 0
+    var total: i64 = 0
+    repeat {
+        total = total + count
+        count = count + 1
+    } til count > 100
+    print("i64 loop sum (0..100):", total)
+}
+
+fn test_floats() {
+    var x: f32 = 1.25
+    var y: f32 = 2.75
+    var res_f32: f32 = x + y
+    print("f32 add:", res_f32)
+
+    var pi: f64 = 3.141592653589793
+    var radius: f64 = 10.0
+    var area: f64 = pi * radius * radius
+    print("f64 circle area (r=10):", area)
+}
+
+fn test_booleans() {
+    var flag1: bool = true
+    var flag2: bool = false
+    var result_and: bool = flag1 and flag2
+    var result_or: bool = flag1 or flag2
+    print("bool and:", result_and)
+    print("bool or:", result_or)
+}
+
+fn main() {
+    print("=== Wyrm v3.1.0 Comprehensive Static Types Test ===")
+    test_integers()
+    test_floats()
+    test_booleans()
+    print("=== All Static Types Passed Successfully ===")
+}

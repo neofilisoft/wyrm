@@ -111,7 +111,19 @@ ASTNodePtr Parser::statement() {
         } else if (current_token_->type == TokenType::IDENTIFIER) {
             // Peek ahead for assignment or method call
             const Token* p = peek(1);
-            if (p && p->type == TokenType::OPERATOR && 
+            if (p && p->type == TokenType::DELIMITER && p->value == ":") {
+                Token name_tok = expect(TokenType::IDENTIFIER);
+                auto name_node = std::make_unique<IdentifierNode>(name_tok);
+                advance(); // consume ':'
+                std::string type_ann = "";
+                if (current_token_ && (current_token_->type == TokenType::IDENTIFIER || current_token_->type == TokenType::KEYWORD)) {
+                    type_ann = current_token_->value;
+                    advance();
+                }
+                expect(TokenType::OPERATOR, "=");
+                ASTNodePtr val = expression();
+                return std::make_unique<AssignmentNode>(std::move(name_node), std::move(val), true, "var", type_ann);
+            } else if (p && p->type == TokenType::OPERATOR && 
                 (p->value == "=" || p->value == "+=" || p->value == "-=" || 
                  p->value == "*=" || p->value == "/=" || p->value == "%=")) {
                 return assignment();
@@ -175,11 +187,22 @@ ASTNodePtr Parser::function_def() {
 
     expect(TokenType::DELIMITER, "(");
     std::vector<std::unique_ptr<IdentifierNode>> params;
+    std::vector<std::string> param_types;
 
     if (current_token_ && !(current_token_->type == TokenType::DELIMITER && current_token_->value == ")")) {
         while (true) {
             Token p_tok = expect(TokenType::IDENTIFIER);
             params.push_back(std::make_unique<IdentifierNode>(p_tok));
+            std::string p_type = "";
+            if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == ":") {
+                advance(); // consume ':'
+                if (current_token_ && (current_token_->type == TokenType::IDENTIFIER || current_token_->type == TokenType::KEYWORD)) {
+                    p_type = current_token_->value;
+                    advance();
+                }
+            }
+            param_types.push_back(p_type);
+
             if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == ",") {
                 advance();
             } else {
@@ -188,6 +211,16 @@ ASTNodePtr Parser::function_def() {
         }
     }
     expect(TokenType::DELIMITER, ")");
+
+    std::string return_type = "";
+    if (current_token_ && (current_token_->value == ":" || current_token_->value == "->")) {
+        advance(); // consume ':' or '->'
+        if (current_token_ && (current_token_->type == TokenType::IDENTIFIER || current_token_->type == TokenType::KEYWORD)) {
+            return_type = current_token_->value;
+            advance();
+        }
+    }
+
     expect(TokenType::DELIMITER, "{");
 
     std::vector<ASTNodePtr> body;
@@ -203,7 +236,7 @@ ASTNodePtr Parser::function_def() {
     }
     expect(TokenType::DELIMITER, "}");
 
-    return std::make_unique<FunctionDefNode>(std::move(name_node), std::move(params), std::move(body));
+    return std::make_unique<FunctionDefNode>(std::move(name_node), std::move(params), std::move(body), std::move(param_types), return_type);
 }
 
 ASTNodePtr Parser::return_statement() {
@@ -211,7 +244,8 @@ ASTNodePtr Parser::return_statement() {
     ASTNodePtr expr = nullptr;
     if (current_token_ && current_token_->type != TokenType::NEWLINE && 
         current_token_->type != TokenType::END_OF_FILE && 
-        current_token_->value != ";") {
+        current_token_->value != ";" && 
+        current_token_->value != "}") {
         expr = expression();
     }
     if (current_token_ && current_token_->value == ";") {
@@ -372,10 +406,19 @@ ASTNodePtr Parser::owned_declaration() {
     Token name_tok = expect(TokenType::IDENTIFIER);
     auto name_node = std::make_unique<IdentifierNode>(name_tok);
 
+    std::string type_ann = "";
+    if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == ":") {
+        advance(); // consume ':'
+        if (current_token_ && (current_token_->type == TokenType::IDENTIFIER || current_token_->type == TokenType::KEYWORD)) {
+            type_ann = current_token_->value;
+            advance();
+        }
+    }
+
     expect(TokenType::OPERATOR, "=");
     ASTNodePtr val = expression();
 
-    return std::make_unique<OwnedDeclNode>(std::move(name_node), std::move(val), decl_type);
+    return std::make_unique<OwnedDeclNode>(std::move(name_node), std::move(val), decl_type, type_ann);
 }
 
 ASTNodePtr Parser::arena_declaration() {
@@ -395,6 +438,7 @@ ASTNodePtr Parser::struct_def() {
 
     expect(TokenType::DELIMITER, "{");
     std::vector<std::string> fields;
+    std::vector<std::string> field_types;
     std::vector<std::unique_ptr<FunctionDefNode>> methods;
 
     while (current_token_ && !(current_token_->type == TokenType::DELIMITER && current_token_->value == "}")) {
@@ -410,8 +454,18 @@ ASTNodePtr Parser::struct_def() {
                 methods.push_back(std::unique_ptr<FunctionDefNode>(f_def));
             }
         } else if (current_token_->type == TokenType::IDENTIFIER) {
-            fields.push_back(current_token_->value);
+            std::string f_name = current_token_->value;
             advance();
+            std::string f_type = "";
+            if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == ":") {
+                advance(); // consume ':'
+                if (current_token_ && (current_token_->type == TokenType::IDENTIFIER || current_token_->type == TokenType::KEYWORD)) {
+                    f_type = current_token_->value;
+                    advance();
+                }
+            }
+            fields.push_back(f_name);
+            field_types.push_back(f_type);
             if (current_token_ && current_token_->type == TokenType::DELIMITER &&
                 (current_token_->value == "," || current_token_->value == ";")) {
                 advance();
@@ -421,7 +475,7 @@ ASTNodePtr Parser::struct_def() {
         }
     }
     expect(TokenType::DELIMITER, "}");
-    return std::make_unique<StructDefNode>(struct_name, std::move(fields), std::move(methods));
+    return std::make_unique<StructDefNode>(struct_name, std::move(fields), std::move(methods), std::move(field_types));
 }
 
 ASTNodePtr Parser::variable_declaration(const std::string& var_type) {
@@ -429,10 +483,19 @@ ASTNodePtr Parser::variable_declaration(const std::string& var_type) {
     Token name_tok = expect(TokenType::IDENTIFIER);
     auto name_node = std::make_unique<IdentifierNode>(name_tok);
 
+    std::string type_ann = "";
+    if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == ":") {
+        advance(); // consume ':'
+        if (current_token_ && (current_token_->type == TokenType::IDENTIFIER || current_token_->type == TokenType::KEYWORD)) {
+            type_ann = current_token_->value;
+            advance();
+        }
+    }
+
     expect(TokenType::OPERATOR, "=");
     ASTNodePtr val = expression();
 
-    return std::make_unique<AssignmentNode>(std::move(name_node), std::move(val), true, var_type);
+    return std::make_unique<AssignmentNode>(std::move(name_node), std::move(val), true, var_type, type_ann);
 }
 
 ASTNodePtr Parser::assignment() {
