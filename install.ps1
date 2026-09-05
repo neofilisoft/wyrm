@@ -4,7 +4,7 @@
 #   $HOME\.wyrm\wyrpkg\wyrpkg.exe
 
 $ErrorActionPreference = "Stop"
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$ScriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
 $WyrmVersion = (Get-Content (Join-Path $ScriptDir "VERSION") -ErrorAction SilentlyContinue).Trim()
 if (-not $WyrmVersion) { $WyrmVersion = "unknown" }
 
@@ -12,6 +12,10 @@ $InstallRoot  = Join-Path $HOME ".wyrm"
 $WyrmcDir     = Join-Path $InstallRoot "wyrmc"
 $WyrpkgDir    = Join-Path $InstallRoot "wyrpkg"
 $PackagesDir  = Join-Path $InstallRoot "packages\wyrmlang"
+
+if ((Test-Path "C:\Program Files\LLVM\bin") -and ($env:PATH -notlike "*LLVM\bin*")) {
+    $env:PATH = "C:\Program Files\LLVM\bin;$env:PATH"
+}
 
 Write-Host "Initializing Wyrm global installation (v$WyrmVersion)..." -ForegroundColor Green
 Push-Location $ScriptDir
@@ -49,22 +53,31 @@ try {
         wyrm_std_sdl.o wyrm_std_collections.o `
         -o wyrmc_bootstrap.exe -std=c++20 -O2
 
+    # Ensure no lingering compiler instances lock the binary
+    Get-Process wyrmc, wyrmc_bootstrap, wyrmc_stage1, wyrpkg -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 200
+
+    # Clean up any leftover temporary artifacts before Stage 1
+    Remove-Item "compiler\wyrmc_temp.ll", "wyrmc_temp.ll" -ErrorAction SilentlyContinue
+    Remove-Item "compiler\wyrmc.exe", "wyrmc_stage1.exe", "wyrmc.exe" -ErrorAction SilentlyContinue
+
     # Stage 1: Build the self-hosted compiler source using the temporary bootstrap compiler
     Write-Host "Self-hosting Stage 1: Building self-hosted compiler using bootstrap compiler..." -ForegroundColor Cyan
-    .\wyrmc_bootstrap.exe build compiler\wyrmc.wyr
-    if (!(Test-Path "compiler\wyrmc.exe")) {
-        throw "Failed to compile Stage 1 self-hosted compiler."
+    $p1 = Start-Process -FilePath "cmd.exe" -ArgumentList '/c', '.\wyrmc_bootstrap.exe build compiler\wyrmc.wyr' -NoNewWindow -Wait -PassThru
+    if ($p1.ExitCode -ne 0 -or !(Test-Path "compiler\wyrmc.exe")) {
+        throw "Failed to compile Stage 1 self-hosted compiler (ExitCode: $($p1.ExitCode))."
     }
     Copy-Item "compiler\wyrmc.exe" -Destination "wyrmc_stage1.exe" -Force
     Remove-Item "compiler\wyrmc.exe" -ErrorAction SilentlyContinue
+    Remove-Item "compiler\wyrmc_temp.ll" -ErrorAction SilentlyContinue
 
     # Stage 2: Rebuild the self-hosted compiler using the Stage 1 compiler to achieve true self-hosting
     Write-Host "Self-hosting Stage 2: Rebuilding self-hosted compiler using Stage 1 compiler..." -ForegroundColor Cyan
-    .\wyrmc_stage1.exe build compiler\wyrmc.wyr
-    if (!(Test-Path "compiler\wyrmc.exe")) {
-        throw "Failed to compile Stage 2 self-hosted compiler."
+    $p2 = Start-Process -FilePath "cmd.exe" -ArgumentList '/c', '.\wyrmc_stage1.exe build compiler\wyrmc.wyr -o wyrmc.exe' -NoNewWindow -Wait -PassThru
+    if ($p2.ExitCode -ne 0 -or !(Test-Path "wyrmc.exe")) {
+        throw "Failed to compile Stage 2 self-hosted compiler (ExitCode: $($p2.ExitCode))."
     }
-    Copy-Item "compiler\wyrmc.exe" -Destination "wyrmc.exe" -Force
+    Remove-Item "compiler\wyrmc_temp.ll" -ErrorAction SilentlyContinue
 
     # Compile wyrpkg -> .wyrm\wyrpkg\wyrpkg.exe
     g++ wyrm\scr\wyrpkg.cpp -o wyrpkg.exe -std=c++20 -O2
@@ -73,7 +86,7 @@ try {
     gcc wyrm\scr\bootstrap.c -o bootstrap.exe -std=c11 -O2
 
     # Clean up temporary object files and bootstrap executables
-    Remove-Item wyrm_core.o, wyrm_arena.o, wyrm_str.o -ErrorAction SilentlyContinue
+    Remove-Item wyrm_core.o, wyrm_arena.o, wyrm_str.o, wyrm_ffi.o, wyrm_std_json.o, wyrm_std_yaml.o, wyrm_std_sdl.o, wyrm_std_collections.o -ErrorAction SilentlyContinue
     Remove-Item wyrmc_bootstrap.exe, wyrmc_stage1.exe, compiler\wyrmc.exe -ErrorAction SilentlyContinue
 
     if (!(Test-Path "wyrmc.exe") -or !(Test-Path "wyrpkg.exe") -or !(Test-Path "bootstrap.exe")) {
