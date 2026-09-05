@@ -1,6 +1,6 @@
 # Wyrm Language
 [![License: MIT](https://img.shields.io/badge/License-MIT-333333.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-3.1.0-B10C1A)](https://github.com/neofilisoft/wyrm/releases)
+[![Version](https://img.shields.io/badge/version-3.2.0-B10C1A)](https://github.com/neofilisoft/wyrm/releases)
 
 Wyrm (`.wyr`) is a static systems programming language with a self-hosted compiler and gradual static typing. The main toolchain consists of `wyrmc` (the self-hosted compiler & runner written in Wyrm) and `wyrpkg` (the package manager).
 
@@ -15,16 +15,16 @@ Wyrm (`.wyr`) is a static systems programming language with a self-hosted compil
 
 ## Features
 
-- **Self-Hosted Compiler (v3.1.0)**: `wyrmc` is self-hosted in pure Wyrm (`compiler/wyrmc.wyr`) and achieves Stage 2 self-compilation.
-- **Gradual / Hybrid Static Typing (v3.1.0)**:
+- **Self-Hosted Compiler (v3.2.0)**: `wyrmc` is self-hosted in pure Wyrm (`compiler/wyrmc.wyr`) and achieves Stage 2 self-compilation.
+- **Gradual / Hybrid Static Typing (v3.2.0)**:
   - Annotate variables: `var count: i64 = 0`, `var byte_val: u8 = 255`, `var ratio: f32 = 3.14`, `var flag: bool = true` (emits unboxed LLVM IR allocas, direct CPU registers, and native machine instructions)
   - Supported primitive types: `i32`, `i64`, `u8`, `f32`, `f64`, `bool`
   - Annotate functions: `fn add(a: i64, b: i64): i64` (or `-> i64`)
   - Annotate structs: `struct Point { x: i32, y: i32 }`
   - Unannotated variables seamlessly infer or use the reference-counted dynamic `Value` model without breaking backward compatibility
-- **Rust/Clang-Style Visual Diagnostics (v3.1.0)**:
+- **Rust/Clang-Style Visual Diagnostics (v3.2.0)**:
   - Compiler diagnostics render formatted error reports with standard error codes (`error[E0001]`, `error[E0002]`), source file snippets, line and column numbers, and underline carets (`^`).
-- **Ownership & Arena Allocation (v3.1.0)**:
+- **Ownership & Arena Allocation (v3.2.0)**:
   - High-performance memory arena allocation via `arena buf(size)`, `buf.alloc(bytes)`, and `buf.reset()`
   - Scoped resource ownership with automatic drop glue releasing nested resources upon exiting blocks and loops
 - Function declarations with `fn`
@@ -64,7 +64,8 @@ Wyrm (`.wyr`) is a static systems programming language with a self-hosted compil
 - `fn main()` is the program entry point and is called automatically (like C)
 - Ownership and RAII direction with `owned`, `unsafe`, `arena` allocation, and raw memory APIs (`malloc`, `free`, `realloc`)
 - 15 built-in type conversion and string operations: `str`, `split`, `join`, `trim`, `upper`, `lower`, `contains`, `replace`, `starts_with`, `ends_with`, `char_at`, `ord_val`, `chr_val`, `to_bytes`, `from_bytes`
-- **Standard Library Modules** (v3.1.0):
+- **Standard Library Modules** (v3.2.0):
+  - `std.random`: PRNG (Xoshiro256**), CSPRNG (OS Cryptographic API), and TRNG (CPU Hardware RDRAND with OS entropy fallback)
   - `std.sdl`: Windowing, 2D hardware rendering, keyboard & mouse event loop
   - `std.ffi`: Foreign Function Interface (dynamic shared library loading via `LoadLibrary`/`dlopen`)
   - `std.thread`: Multithreading via OS threads, worker spawning, and mutex synchronization
