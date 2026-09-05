@@ -39,6 +39,7 @@ try {
     gcc -std=c11 -O2 -c wyrm\lib\stdlib\wyrm_std_yaml.c -o wyrm_std_yaml.o -Iwyrm\lib
     gcc -std=c11 -O2 -c wyrm\lib\stdlib\wyrm_std_sdl.c  -o wyrm_std_sdl.o  -Iwyrm\lib
     gcc -std=c11 -O2 -c wyrm\lib\stdlib\wyrm_std_collections.c -o wyrm_std_collections.o -Iwyrm\lib
+    gcc -std=c11 -O2 -c wyrm\lib\stdlib\wyrm_std_random.c -o wyrm_std_random.o -Iwyrm\lib
 
     # Compile temporary C++ bootstrap compiler
     g++ wyrm\scr\wyrmc.cpp `
@@ -50,7 +51,7 @@ try {
         compiler\transpiler\transpiler.cpp `
         wyrm_core.o wyrm_arena.o wyrm_str.o `
         wyrm_ffi.o wyrm_std_json.o wyrm_std_yaml.o `
-        wyrm_std_sdl.o wyrm_std_collections.o `
+        wyrm_std_sdl.o wyrm_std_collections.o wyrm_std_random.o `
         -o wyrmc_bootstrap.exe -std=c++20 -O2
 
     # Ensure no lingering compiler instances lock the binary
@@ -86,7 +87,7 @@ try {
     gcc wyrm\scr\bootstrap.c -o bootstrap.exe -std=c11 -O2
 
     # Clean up temporary object files and bootstrap executables
-    Remove-Item wyrm_core.o, wyrm_arena.o, wyrm_str.o, wyrm_ffi.o, wyrm_std_json.o, wyrm_std_yaml.o, wyrm_std_sdl.o, wyrm_std_collections.o -ErrorAction SilentlyContinue
+    Remove-Item wyrm_core.o, wyrm_arena.o, wyrm_str.o, wyrm_ffi.o, wyrm_std_json.o, wyrm_std_yaml.o, wyrm_std_sdl.o, wyrm_std_collections.o, wyrm_std_random.o -ErrorAction SilentlyContinue
     Remove-Item wyrmc_bootstrap.exe, wyrmc_stage1.exe, compiler\wyrmc.exe -ErrorAction SilentlyContinue
 
     if (!(Test-Path "wyrmc.exe") -or !(Test-Path "wyrpkg.exe") -or !(Test-Path "bootstrap.exe")) {

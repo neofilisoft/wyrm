@@ -73,6 +73,7 @@ $CC -std=c11 -O2 -c wyrm/lib/stdlib/wyrm_std_json.c -o wyrm_std_json.o -Iwyrm/li
 $CC -std=c11 -O2 -c wyrm/lib/stdlib/wyrm_std_yaml.c -o wyrm_std_yaml.o -Iwyrm/lib
 $CC -std=c11 -O2 -c wyrm/lib/stdlib/wyrm_std_sdl.c -o wyrm_std_sdl.o -Iwyrm/lib
 $CC -std=c11 -O2 -c wyrm/lib/stdlib/wyrm_std_collections.c -o wyrm_std_collections.o -Iwyrm/lib
+$CC -std=c11 -O2 -c wyrm/lib/stdlib/wyrm_std_random.c -o wyrm_std_random.o -Iwyrm/lib
 
 # 4. Compile temporary C++ bootstrap compiler
 echo "Compiling bootstrap compiler..."
@@ -85,7 +86,7 @@ $CXX wyrm/scr/wyrmc.cpp \
     compiler/transpiler/transpiler.cpp \
     wyrm_core.o wyrm_arena.o wyrm_str.o \
     wyrm_ffi.o wyrm_std_json.o wyrm_std_yaml.o \
-    wyrm_std_sdl.o wyrm_std_collections.o \
+    wyrm_std_sdl.o wyrm_std_collections.o wyrm_std_random.o \
     -o wyrmc_bootstrap -std=c++20 -O2
 
 # 5. Build self-hosted compiler stage
