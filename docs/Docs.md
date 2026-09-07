@@ -1,6 +1,6 @@
 # Wyrm Language Specification
 
-This document describes the Wyrm language design and architecture implemented in the repository. The canonical project version is stored in the [VERSION](file:///c:/Users/BEST/Desktop/wyrm/VERSION) file (currently **v3.2.0**).
+This document describes the Wyrm language design and architecture implemented in the repository. The canonical project version is stored in the [VERSION](file:///c:/Users/BEST/Desktop/wyrm/VERSION) file (currently **1.0.0**).
 
 ---
 
@@ -26,9 +26,9 @@ This document describes the Wyrm language design and architecture implemented in
 
 ---
 
-## 3. Values & Static Types (v3.2.0 Gradual / Hybrid Model)
+## 3. Values & Static Types (1.0.0 Gradual / Hybrid Model)
 
-Wyrm v3.2.0 provides **Gradual / Hybrid Static Typing** combining the ergonomics of dynamic scripting with C/Rust unboxed native CPU execution:
+Wyrm 1.0.0 provides **Gradual / Hybrid Static Typing** combining the ergonomics of dynamic scripting with C/Rust unboxed native CPU execution:
 
 ### Static Primitive Types
 When explicitly annotated, Wyrm generates unboxed LLVM IR instructions without value boxing overhead:
@@ -112,7 +112,7 @@ if x > 10 {
 ```
 
 ### Loops
-The primary loop structure is **`do { ... } til <condition>`** (with `repeat { ... } til` accepted as an alias). The loop body executes repeatedly until the `<condition>` becomes `true`:
+The canonical loop structure is **`do { ... } til <condition>`**. The loop body executes repeatedly until the `<condition>` becomes `true`:
 ```wyrm
 var i = 0
 do {
@@ -120,7 +120,7 @@ do {
     i = i + 1
 } til i >= 5
 ```
-Loops support `break` and `continue` statements.
+Loops support `break` and `continue` statements. (Note: The legacy `repeat` keyword has been removed in favor of `do...til`).
 
 ---
 
@@ -162,7 +162,8 @@ Structs are managed via deterministic reference counting in [WyrmStruct](file://
 - **Array Literals**: `var list = [10, 20, 30]`
 - **Numeric Indexing**: `list[0]` (0-indexed, supports negative indices like `list[-1]`)
 - **Multi-Dimensional Index Assignment**: `grid[x][y] = value`
-- **Array Slicing**: `list[1:3]` (returns an independent deep-copy slice)
+- **Array Slicing**: `list[start:end]` (half-open interval `[start, end)`, supports `list[2:4]`, `list[:3]`, `list[2:]`, and full slice `list[:]`, returning an independent deep-copy slice)
+- **Built-in Array & String Operations**: `join(sep, list)`, `split(str, delim)`, `len(list)`, `append(list, elem)`, `pop(list)`
 - **Dictionary / Map Subscripting**: JSON objects and HashMaps support string key subscripting:
   ```wyrm
   var item = json_parse("{\"title\": \"Game\"}")
@@ -203,9 +204,34 @@ Wyrm employs a **Deterministic Dynamic Value Runtime with RAII Drop Glue and Sco
 
 ---
 
-## 11. Standard Library Modules (v3.2.0)
+## 11. Standard Library Modules (1.0.0)
 
 Imported via `use std.<module>;`:
+
+### `std.time` - High-Resolution Timers & Formatting
+High-precision monotonic clock (Windows QPC / POSIX CLOCK_MONOTONIC), Unix epoch wall-clock timestamps, millisecond thread sleep, and date/time formatting:
+```wyrm
+use std.time;
+
+fn main() {
+    // 1. Wall-Clock Timestamps
+    var now_sec = time_now()       // Floating-point seconds (sub-microsecond precision)
+    var unix_sec = time_unix()     // Integer seconds since Unix epoch
+    var unix_ms = time_unix_ms()   // Integer milliseconds
+
+    // 2. High-Resolution Monotonic Timers (Benchmark / Delta time)
+    var t0 = time_monotonic_ms()
+    time_sleep(25)                 // Sleep current thread for 25 milliseconds
+    var t1 = time_monotonic_ms()
+    var elapsed = time_diff(t0, t1)
+    print("Elapsed: " + str(elapsed) + " ms")
+
+    // 3. Date & Time String Formatting
+    var utc_date = time_format(unix_sec, "%Y-%m-%d")
+    var local_dt = time_format_local(unix_sec, "%Y-%m-%d %H:%M:%S")
+    print("UTC: " + utc_date + " | Local: " + local_dt)
+}
+```
 
 ### `std.random` - Random Number Generation
 Three-tier random generation covering PRNG (Xoshiro256**), CSPRNG (OS Cryptographic API), and TRNG (CPU Hardware RDRAND with OS entropy fallback):
@@ -361,7 +387,7 @@ Wyrm provides the following core built-in operations:
 `wyrpkg` manages Wyrm projects and supports a distributed, Git-based Public Package Registry:
 
 ```bash
-# Create or initialize projects
+# Create or initialize projects (generates wyrpkg.toml)
 wyrpkg new my_game
 wyrpkg init
 
@@ -383,6 +409,20 @@ wyrpkg publish
 # List and remove packages
 wyrpkg list
 wyrpkg remove repo
+```
+
+### Manifest Format (`wyrpkg.toml`)
+
+Projects created with `wyrpkg new` or `wyrpkg init` use `wyrpkg.toml` located at the project root:
+
+```toml
+[package]
+name = "my_game"
+version = "0.1.0"
+entry = "main.wyr"
+
+[dependencies]
+# std_time = "3.2.1"
 ```
 
 ---
@@ -412,9 +452,9 @@ This compiles `wyrmc` and `wyrpkg`, deploys the standard library packages, and c
 
 ---
 
-## 15. Compiler Visual Diagnostics (v3.2.0)
+## 15. Compiler Visual Diagnostics (1.0.0)
 
-Wyrm v3.2.0 features compiler diagnostics styled after Rust and Clang, providing source code context, column markers, and standard error classification codes:
+Wyrm 1.0.0 features compiler diagnostics styled after Rust and Clang, providing source code context, column markers, and standard error classification codes:
 
 ### Visual Error Formatting
 When a syntax, semantic, or lexical error is encountered, `wyrmc` highlights the exact offending code line and column:
@@ -434,4 +474,5 @@ error[E0002]: syntax error: unexpected token NEWLINE '
 - **`E0002`**: Parser syntax error (unexpected tokens, missing delimiters, malformed statements)
 - **`E0003`**: Semantic analysis error (type mismatches, undeclared identifiers, invalid assignments)
 - **`E0004`**: Codegen and backend compilation failure (native linking issues, unsupported target flags)
+- **`E0010`**: Deprecated / removed syntax error (e.g. legacy `repeat` loop keyword replaced by `do...til`)
 
