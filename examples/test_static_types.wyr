@@ -1,7 +1,7 @@
 fn main() {
     var count: i32 = 0
     var sum: i32 = 0
-    repeat {
+    do {
         sum = sum + count
         count = count + 1
     } til count > 10

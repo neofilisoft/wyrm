@@ -11,7 +11,7 @@ fn test_integers() {
 
     var count: i64 = 0
     var total: i64 = 0
-    repeat {
+    do {
         total = total + count
         count = count + 1
     } til count > 100

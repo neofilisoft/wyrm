@@ -1,0 +1,164 @@
+// ============================================================
+//  conceive.wyr - Wyrm v3.2+ Breeding & Identity Simulation
+// ============================================================
+
+use std.json;
+use std.yaml;
+use std.random;
+use std.time;
+
+struct BreedingResult {
+    combination,
+    rate,
+    roll,
+    pregnant
+}
+
+fn calculate_pregnancy(race1, race2) {
+    var combo = "Breeding is not supported"
+    var rate = 0
+
+    if race1 == "human" and race2 == "human" {
+        rate = rand_range(70, 90)
+        combo = "human + human"
+    } elif race1 == "elf" and race2 == "elf" {
+        rate = rand_range(40, 50)
+        combo = "elf + elf"
+    } elif (race1 == "human" and race2 == "elf") or (race1 == "elf" and race2 == "human") {
+        rate = rand_range(28, 45)
+        combo = "human + elf"
+    } else {
+        return BreedingResult(combo, 0, 0, false)
+    }
+
+    var roll = rand_range(1, 100)
+    var is_pregnant = roll <= rate
+
+    return BreedingResult(combo, rate, roll, is_pregnant)
+}
+
+fn show_result(res) {
+    if res.combination == "Breeding is not supported" {
+        print("miss " + res.combination)
+        print("---")
+        return
+    }
+
+    print(" breeding: " + res.combination)
+    print(" successful rate: " + str(res.rate) + "%")
+    print(" roll result: " + str(res.roll) + "/100")
+    if res.pregnant {
+        print("result: Conceive successfully")
+    } else {
+        print("result: Not conceive")
+    }
+    print("---")
+}
+
+// สร้าง child identity แล้วพิมพ์เป็น JSON + YAML
+fn emit_child_identity(race1, race2, roll, last_rate) {
+    var potential = roll + rand_range(-10, 10)
+    if potential < 1 { potential = 1 }
+    if potential > 100 { potential = 100 }
+
+    var child_tail = rand_range(1000, 9999)
+    var child_id = "child-" + str(child_tail) + str(rand_range(1000, 9999))
+    var did = "did:soken:" + rand_bytes_hex(8)
+
+    var logic = 0.30 + (potential / 220.0)
+    if logic > 1.0 { logic = 1.0 }
+    var adapt = 0.35 + (potential / 250.0)
+    if adapt > 1.0 { adapt = 1.0 }
+    var stability = 1.0 - ((55 - potential) / 120.0)
+    if stability < 0.0 { stability = 0.0 - stability }
+    if stability < 0.1 { stability = 0.1 }
+    if stability > 1.0 { stability = 1.0 }
+
+    // ---- JSON object ----
+    var root = json_object()
+    json_set(root, "event_id", "conceive-" + str(rand_range(100000000, 999999999)))
+    json_set(root, "breeding", race1 + " + " + race2)
+    json_set(root, "pregnancy_rate", last_rate)
+    json_set(root, "roll_result", roll)
+    json_set(root, "success", true)
+
+    var child = json_object()
+    json_set(child, "child_id", child_id)
+    json_set(child, "did", did)
+    json_set(child, "name", "SokenChild-" + str(child_tail))
+    json_set(child, "archetype", "RNG-Hybrid")
+    json_set(child, "potential", potential)
+
+    var lineage = json_object()
+    json_set(lineage, "parent_1", race1)
+    json_set(lineage, "parent_2", race2)
+    json_set(lineage, "breeding", race1 + " + " + race2)
+    json_set(child, "lineage", lineage)
+
+    var traits = json_object()
+    json_set(traits, "logic", logic)
+    json_set(traits, "adaptability", adapt)
+    json_set(traits, "stability", stability)
+    json_set(child, "base_traits", traits)
+
+    json_set(child, "soul_signature", rand_bytes_hex(16))
+    json_set(root, "child_identity", child)
+
+    print("")
+    print("========== CHILD IDENTITY (JSON) ==========")
+    print(json_pretty(root, 2))
+    print("===========================================")
+    print("")
+    print("========== CHILD IDENTITY (YAML) ==========")
+    print(yaml_encode(root))
+    print("===========================================")
+}
+
+fn main() {
+    // Seeding RNG: prefer CPU hardware entropy (TRNG), fallback to high-resolution timestamp
+    if rand_has_trng() {
+        rand_reseed_trng()
+        print("RNG seeded via CPU Hardware TRNG (RDRAND)")
+    } else {
+        rand_seed(time_unix_ms())
+        print("RNG seeded via high-precision timestamp")
+    }
+
+    print("=== RNG Intercourse System (Wyrm v3.2+) ===")
+    print("")
+
+    // 10 รอบสุ่มคู่ผสมพันธุ์
+    var i = 1
+    do {
+        print("time number " + str(i) + ":")
+        var pair = rand_choice([["human", "human"], ["elf", "elf"], ["human", "elf"]])
+        var r = calculate_pregnancy(pair[0], pair[1])
+        show_result(r)
+        i = i + 1
+    } til i > 10
+
+    // trials แบบ fixed
+    print("=== trials (fixed) ===")
+    var r_hh = calculate_pregnancy("human", "human")
+    show_result(r_hh)
+
+    var r_ee = calculate_pregnancy("elf", "elf")
+    show_result(r_ee)
+
+    var r_he = calculate_pregnancy("human", "elf")
+    show_result(r_he)
+
+    // ถ้า human+human สำเร็จ -> ออก identity เป็น JSON/YAML
+    if r_hh.pregnant {
+        print("")
+        print("One successful human+human conception detected.")
+        emit_child_identity("human", "human", r_hh.roll, r_hh.rate)
+    } else {
+        print("")
+        print("No successful human+human conception in fixed trials.")
+        print("(Re-run to try again - RNG changes each run)")
+    }
+
+    print("")
+    print("Done.")
+}

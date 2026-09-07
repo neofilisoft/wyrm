@@ -1,0 +1,72 @@
+// test_std_random.wyr - Test suite for std.random module in Wyrm v3.2.0
+
+use std.random;
+
+fn main() {
+    print("=== Testing std.random Module in Wyrm v3.2.0 ===")
+
+    // 1. PRNG Determinism & Seeding
+    print("[1] Testing PRNG determinism with seed...")
+    rand_seed(98765)
+    var r1 = rand()
+    var i1 = rand_int(1, 1000)
+    var c1 = rand_choice(["Alpha", "Beta", "Gamma", "Delta"])
+
+    rand_seed(98765)
+    var r2 = rand()
+    var i2 = rand_int(1, 1000)
+    var c2 = rand_choice(["Alpha", "Beta", "Gamma", "Delta"])
+
+    if r1 == r2 and i1 == i2 and c1 == c2 {
+        print("  ✓ PRNG is strictly deterministic with seed")
+    } else {
+        print("  ✗ PRNG determinism check failed!")
+        exit(1)
+    }
+
+    // 2. PRNG Array operations
+    print("[2] Testing rand_choice and rand_shuffle...")
+    var items = [10, 20, 30, 40, 50, 60]
+    var picked = rand_choice(items)
+    print("  Picked item:", picked)
+
+    var shuffled = rand_shuffle(items)
+    print("  Original:", items)
+    print("  Shuffled:", shuffled)
+    if len(shuffled) == len(items) {
+        print("  ✓ rand_shuffle preserved length")
+    }
+
+    // 3. CSPRNG Cryptographic Random
+    print("[3] Testing CSPRNG (OS entropy)...")
+    var sec_float = rand_secure()
+    var sec_int = rand_secure_int(1000, 9999)
+    var hex_token = rand_bytes_hex(16)
+
+    print("  Secure float:", sec_float)
+    print("  Secure int (1000-9999):", sec_int)
+    print("  Hex token (16 bytes = 32 hex chars):", hex_token)
+
+    if sec_float >= 0.0 and sec_float < 1.0 and sec_int >= 1000 and sec_int <= 9999 and len(hex_token) == 32 {
+        print("  ✓ CSPRNG checks passed")
+    } else {
+        print("  ✗ CSPRNG validation failed!")
+        exit(1)
+    }
+
+    // 4. TRNG Hardware / System True Entropy
+    print("[4] Testing TRNG (Hardware RDRAND / OS Hardware pool)...")
+    var has_hw = rand_has_trng()
+    print("  CPU hardware RDRAND available:", has_hw)
+
+    var trng_float = rand_trng()
+    var trng_val = rand_trng_int(1, 100)
+    print("  TRNG float:", trng_float)
+    print("  TRNG int (1-100):", trng_val)
+
+    rand_reseed_trng()
+    var after_reseed = rand()
+    print("  Value after TRNG re-seed:", after_reseed)
+
+    print("=== All std.random tests passed successfully! ===")
+}

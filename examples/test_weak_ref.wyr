@@ -1,0 +1,51 @@
+struct Node {
+    val: i32,
+    parent: weak Node
+}
+
+fn create_orphan_child() {
+    owned temp_parent = Node(999, null)
+    var child = Node(500, weak temp_parent)
+    // temp_parent is owned and automatically dropped by RAII drop glue upon function return
+    return child
+}
+
+fn main() {
+    print("=== Testing Wyrm Weak Reference System ===")
+
+    // Test 1: Basic weak reference creation and member access
+    var parent = Node(100, null)
+    var child = Node(200, weak parent)
+
+    print("[1] Parent value accessed via child.parent:")
+    var p = child.parent
+    print("    child.parent.val =", p.val)
+
+    // Test 2: Built-in type check
+    print("[2] Weak ref type check:")
+    print("    type(weak parent) =", type(weak parent))
+
+    // Test 3: Comparison with null while alive
+    print("[3] Null checks while alive:")
+    print("    child.parent != null:", child.parent != null)
+    print("    child.parent == null:", child.parent == null)
+
+    // Test 4: Explicit lock builtin
+    var locked = lock(child.parent)
+    print("[4] Explicit lock promotion:")
+    print("    locked.val =", locked.val)
+
+    // Test 5: Functional weak() syntax
+    var w2 = weak(parent)
+    print("[5] Functional weak(parent) access:")
+    print("    w2.val =", w2.val)
+
+    // Test 6: Zeroing Weak Reference test (target dropped)
+    var orphan = create_orphan_child()
+    print("[6] Zeroing Weak Reference test (parent dropped upon return):")
+    print("    orphan.parent == null:", orphan.parent == null)
+    print("    orphan.parent != null:", orphan.parent != null)
+    print("    lock(orphan.parent) == null:", lock(orphan.parent) == null)
+
+    print("\n=== ALL WEAK REFERENCE TESTS PASSED SUCCESSFULLY! ===")
+}

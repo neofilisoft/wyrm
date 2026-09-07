@@ -1,4 +1,4 @@
-# Wyrm v3.2.0 Binary Release Packager for Windows x64
+# Wyrm v3.2.1 Binary Release Packager for Windows x64
 $ErrorActionPreference = "Stop"
 
 $RootDir = (Get-Item $PSScriptRoot).Parent.FullName
@@ -34,10 +34,11 @@ if (Test-Path $sdlSrc) {
 Copy-Item (Join-Path $RootDir "wyrm\lib\*") -Destination (Join-Path $StageDir "packages\wyrmlang\lib") -Recurse -Force
 Copy-Item (Join-Path $RootDir "VERSION") -Destination (Join-Path $StageDir "packages\wyrmlang\VERSION") -Force
 
-# 3. Copy documentation and license
+# 3. Copy documentation, extension, and license
 Copy-Item (Join-Path $RootDir "LICENSE") -Destination $StageDir -Force
 Copy-Item (Join-Path $RootDir "README.md") -Destination $StageDir -Force
 Copy-Item (Join-Path $RootDir "VERSION") -Destination $StageDir -Force
+Copy-Item (Join-Path $RootDir "extension") -Destination (Join-Path $StageDir "extension") -Recurse -Force
 
 # 4. Create install.bat for manual unzip users
 $batContent = @"
@@ -54,6 +55,13 @@ copy /y "%~dp0bin\wyrmc.exe" "%TARGET%\wyrmc\" >nul
 copy /y "%~dp0bin\wyrpkg.exe" "%TARGET%\wyrpkg\" >nul
 if exist "%~dp0bin\SDL2.dll" copy /y "%~dp0bin\SDL2.dll" "%TARGET%\wyrmc\" >nul
 xcopy /s /e /y /q "%~dp0packages\wyrmlang\*" "%TARGET%\packages\wyrmlang\" >nul
+
+if exist "%USERPROFILE%\.vscode\extensions" (
+    xcopy /s /e /y /q "%~dp0extension\*" "%USERPROFILE%\.vscode\extensions\neofilisoft.wyrm-syntax-$Version\" >nul
+)
+if exist "%USERPROFILE%\.antigravity-ide\extensions" (
+    xcopy /s /e /y /q "%~dp0extension\*" "%USERPROFILE%\.antigravity-ide\extensions\neofilisoft.wyrm-syntax-$Version\" >nul
+)
 
 powershell -NoProfile -Command "[Environment]::SetEnvironmentVariable('PATH', [Environment]::GetEnvironmentVariable('PATH', 'User') + ';%TARGET%\wyrmc;%TARGET%\wyrpkg', 'User')" >nul 2>&1
 

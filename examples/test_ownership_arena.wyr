@@ -28,7 +28,7 @@ fn main() {
     print("Caller received resource id =", res.id, "tag =", res.tag)
 
     var count: i32 = 0
-    repeat {
+    do {
         owned temp_res: Resource = Resource(count, "temp")
         print("Loop iteration", count, "owns temp_res id =", temp_res.id)
         count = count + 1

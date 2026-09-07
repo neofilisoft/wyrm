@@ -16,14 +16,14 @@ if score >= 90 {
 }
 print("Your grade is: " + grade)
 
-// Repeat loop (similar to do-while)
+// Do-til loop (similar to do-while)
 var count = 0
 do {
     print("Count is: " + str(count))
     count = count + 1
 } til (count >= 5)
 
-// Repeat loop demonstrating break statement
+// Do-til loop demonstrating break statement
 var i = 0
 do {
     if i == 3 {
@@ -34,7 +34,7 @@ do {
     i = i + 1
 } til (i >= 5)
 
-// Repeat loop demonstrating continue statement
+// Do-til loop demonstrating continue statement
 var k = 0
 do {
     k = k + 1
