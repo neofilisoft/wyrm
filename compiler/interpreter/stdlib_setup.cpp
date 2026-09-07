@@ -26,6 +26,7 @@ extern "C" {
 #include "../../wyrm/lib/stdlib/wyrm_std_sdl.h"
 #include "../../wyrm/lib/stdlib/wyrm_std_collections.h"
 #include "../../wyrm/lib/stdlib/wyrm_std_random.h"
+#include "../../wyrm/lib/stdlib/wyrm_std_time.h"
 }
 
 namespace wyrm {
@@ -302,6 +303,19 @@ void register_random(Environment& env) {
     reg(env, "rand_reseed_trng", wrap0(rand_reseed_trng));
 }
 
+void register_time(Environment& env) {
+    reg(env, "time_now",          wrap0(time_now));
+    reg(env, "time_unix",         wrap0(time_unix));
+    reg(env, "time_unix_ms",      wrap0(time_unix_ms));
+    reg(env, "time_monotonic",    wrap0(time_monotonic));
+    reg(env, "time_monotonic_ms", wrap0(time_monotonic_ms));
+    reg(env, "time_monotonic_ns", wrap0(time_monotonic_ns));
+    reg(env, "time_sleep",        wrap1(time_sleep_ms));
+    reg(env, "time_diff",         wrap2(time_diff));
+    reg(env, "time_format",       wrap2(time_format_utc));
+    reg(env, "time_format_local", wrap2(time_format_local));
+}
+
 /* ============================================================
  * try_register: public dispatch function
  * ============================================================ */
@@ -315,6 +329,7 @@ bool try_register(const std::string& module_path, Environment& env) {
         { "std.thread",      register_thread      },
         { "std.collections", register_collections },
         { "std.random",      register_random      },
+        { "std.time",        register_time        },
     };
     auto it = dispatch_table.find(module_path);
     if (it == dispatch_table.end()) return false;

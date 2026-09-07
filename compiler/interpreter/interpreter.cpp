@@ -426,13 +426,29 @@ void Interpreter::visit(UseNode* node) {
     // 1. Relative to source_dir
     // 2. Global installed packages (~/.wyrm/packages)
     // 3. Local packages folder (CWD/packages)
+    std::string dot_path = raw_path;
+    for (char& c : dot_path) {
+        if (c == '.') c = '/';
+    }
+
     std::vector<std::string> possible_paths;
-    possible_paths.push_back(source_dir + "/" + raw_path);
-    possible_paths.push_back(source_dir + "/" + raw_path + ".wyr");
-    possible_paths.push_back(source_dir + "/packages/" + raw_path);
-    possible_paths.push_back(source_dir + "/packages/" + raw_path + ".wyr");
-    possible_paths.push_back(source_dir + "/packages/" + raw_path + "/mod.wyr");
-    possible_paths.push_back(source_dir + "/packages/" + raw_path + "/main.wyr");
+    auto add_candidates = [&](const std::string& prefix, const std::string& p) {
+        possible_paths.push_back(prefix + p);
+        possible_paths.push_back(prefix + p + ".wyr");
+        possible_paths.push_back(prefix + p + "/mod.wyr");
+        possible_paths.push_back(prefix + p + "/main.wyr");
+    };
+
+    add_candidates(source_dir + "/", raw_path);
+    if (dot_path != raw_path) add_candidates(source_dir + "/", dot_path);
+    add_candidates(source_dir + "/library/", raw_path);
+    if (dot_path != raw_path) add_candidates(source_dir + "/library/", dot_path);
+    add_candidates(source_dir + "/packages/", raw_path);
+    if (dot_path != raw_path) add_candidates(source_dir + "/packages/", dot_path);
+    add_candidates("library/", raw_path);
+    if (dot_path != raw_path) add_candidates("library/", dot_path);
+    add_candidates("packages/", raw_path);
+    if (dot_path != raw_path) add_candidates("packages/", dot_path);
 
     std::string home_dir;
     if (const char* h = std::getenv("USERPROFILE")) {
@@ -441,11 +457,12 @@ void Interpreter::visit(UseNode* node) {
         home_dir = h;
     }
     if (!home_dir.empty()) {
-        std::string global_pkg = home_dir + "/.wyrm/packages/";
-        possible_paths.push_back(global_pkg + raw_path);
-        possible_paths.push_back(global_pkg + raw_path + ".wyr");
-        possible_paths.push_back(global_pkg + raw_path + "/mod.wyr");
-        possible_paths.push_back(global_pkg + raw_path + "/main.wyr");
+        add_candidates(home_dir + "/.wyrm/packages/", raw_path);
+        add_candidates(home_dir + "/.wyrm/library/", raw_path);
+        if (dot_path != raw_path) {
+            add_candidates(home_dir + "/.wyrm/packages/", dot_path);
+            add_candidates(home_dir + "/.wyrm/library/", dot_path);
+        }
     }
 
     std::string target_path;

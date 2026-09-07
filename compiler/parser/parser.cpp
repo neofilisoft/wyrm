@@ -93,7 +93,9 @@ ASTNodePtr Parser::statement() {
                 return print_statement();
             } else if (current_token_->value == "if") {
                 return if_statement();
-            } else if (current_token_->value == "repeat" || current_token_->value == "do") {
+            } else if (current_token_->value == "repeat") {
+                throw std::runtime_error("'repeat' loop syntax has been removed. Use 'do { ... } til <condition>' instead at line " + std::to_string(current_token_->line));
+            } else if (current_token_->value == "do") {
                 return repeat_statement();
             } else if (current_token_->value == "unsafe") {
                 return unsafe_block();
@@ -459,7 +461,14 @@ ASTNodePtr Parser::struct_def() {
             std::string f_type = "";
             if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == ":") {
                 advance(); // consume ':'
-                if (current_token_ && (current_token_->type == TokenType::IDENTIFIER || current_token_->type == TokenType::KEYWORD)) {
+                if (current_token_ && current_token_->value == "weak") {
+                    advance(); // consume 'weak'
+                    f_type = "weak";
+                    if (current_token_ && (current_token_->type == TokenType::IDENTIFIER || current_token_->type == TokenType::KEYWORD)) {
+                        f_type += " " + current_token_->value;
+                        advance();
+                    }
+                } else if (current_token_ && (current_token_->type == TokenType::IDENTIFIER || current_token_->type == TokenType::KEYWORD)) {
                     f_type = current_token_->value;
                     advance();
                 }
@@ -687,6 +696,17 @@ ASTNodePtr Parser::power() {
 }
 
 ASTNodePtr Parser::unary() {
+    if (current_token_ && (current_token_->type == TokenType::KEYWORD || current_token_->type == TokenType::IDENTIFIER) && current_token_->value == "weak") {
+        Token weak_tok = *current_token_;
+        advance();
+        ASTNodePtr expr = unary();
+        std::vector<ASTNodePtr> args;
+        args.push_back(std::move(expr));
+        return std::make_unique<FunctionCallNode>(
+            std::make_unique<IdentifierNode>(weak_tok),
+            std::move(args)
+        );
+    }
     if (current_token_ && current_token_->type == TokenType::OPERATOR && 
         (current_token_->value == "not" || current_token_->value == "!" || 
          current_token_->value == "-" || current_token_->value == "+")) {

@@ -103,6 +103,16 @@ Value builtin_pop(const std::vector<Value>& args) {
     return val_array_pop(args[0]);
 }
 
+Value builtin_weak(const std::vector<Value>& args) {
+    if (args.empty()) return val_null();
+    return val_weak_ref(args[0]);
+}
+
+Value builtin_lock(const std::vector<Value>& args) {
+    if (args.empty()) return val_null();
+    return val_weak_lock(args[0]);
+}
+
 Value builtin_split(const std::vector<Value>& args) {
     if (args.size() < 2) throw std::runtime_error("split() expects 2 arguments");
     return val_split(args[0], args[1]);
@@ -238,6 +248,8 @@ void Interpreter::setup_builtins() {
     register_fn("pow", builtin_pow);
     register_fn("append", builtin_append);
     register_fn("pop", builtin_pop);
+    register_fn("weak", builtin_weak);
+    register_fn("lock", builtin_lock);
 
     // Spezialized builtins intercepting interpreter context
     auto register_special_fn = [this](const std::string& name) {

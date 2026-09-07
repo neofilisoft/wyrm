@@ -24,11 +24,11 @@ std::string Transpiler::load_c_runtime() {
         "wyrm_core.h", "wyrm_arena.h", "wyrm_str.h", "wyrm_ffi.h",
         "stdlib/wyrm_std_json.h", "stdlib/wyrm_std_yaml.h",
         "stdlib/wyrm_std_sdl.h", "stdlib/wyrm_std_collections.h",
-        "stdlib/wyrm_std_random.h",
+        "stdlib/wyrm_std_random.h", "stdlib/wyrm_std_time.h",
         "wyrm_core.c", "wyrm_arena.c", "wyrm_str.c", "wyrm_ffi.c",
         "stdlib/wyrm_std_json.c", "stdlib/wyrm_std_yaml.c",
         "stdlib/wyrm_std_sdl.c", "stdlib/wyrm_std_collections.c",
-        "stdlib/wyrm_std_random.c"
+        "stdlib/wyrm_std_random.c", "stdlib/wyrm_std_time.c"
     };
 
     std::string result;
@@ -483,7 +483,7 @@ void Transpiler::visit(FunctionCallNode* node) {
 
     static const std::unordered_set<std::string> builtins = {
         "input", "len", "type", "int", "float", "str", "abs", "round", "pow",
-        "append", "pop", "malloc", "free", "realloc", "sys_args", "read_file", "write_file", "exit", "system", "getenv",
+        "append", "pop", "weak", "lock", "malloc", "free", "realloc", "sys_args", "read_file", "write_file", "exit", "system", "getenv",
         "split", "join", "trim", "upper", "lower", "contains", "replace",
         "starts_with", "ends_with", "char_at", "ord_val", "chr_val", "to_bytes", "from_bytes"
     };
@@ -505,6 +505,8 @@ void Transpiler::visit(FunctionCallNode* node) {
             else if (func_name == "realloc") c_fn = "val_raw_realloc";
             else if (func_name == "append") c_fn = "val_array_append";
             else if (func_name == "pop") c_fn = "val_array_pop";
+            else if (func_name == "weak") c_fn = "val_weak_ref";
+            else if (func_name == "lock") c_fn = "val_weak_lock";
             last_result_ = c_fn + "(" + args_str + ")";
         }
     } else {
@@ -558,16 +560,28 @@ void Transpiler::visit(UseNode* node) {
     std::string raw_path = node->module_path;
     if (raw_path == "std.ffi" || raw_path == "std.json" || raw_path == "std.yaml" ||
         raw_path == "std.sdl" || raw_path == "std.thread" || raw_path == "std.collections" ||
-        raw_path == "std.random") {
+        raw_path == "std.random" || raw_path == "std.time") {
         return;
     }
+    std::string dot_path = raw_path;
+    for (char& c : dot_path) {
+        if (c == '.') c = '/';
+    }
+
     std::vector<std::string> possible_paths;
-    possible_paths.push_back(raw_path);
-    possible_paths.push_back(raw_path + ".wyr");
-    possible_paths.push_back("packages/" + raw_path);
-    possible_paths.push_back("packages/" + raw_path + ".wyr");
-    possible_paths.push_back("packages/" + raw_path + "/mod.wyr");
-    possible_paths.push_back("packages/" + raw_path + "/main.wyr");
+    auto add_candidates = [&](const std::string& prefix, const std::string& p) {
+        possible_paths.push_back(prefix + p);
+        possible_paths.push_back(prefix + p + ".wyr");
+        possible_paths.push_back(prefix + p + "/mod.wyr");
+        possible_paths.push_back(prefix + p + "/main.wyr");
+    };
+
+    add_candidates("", raw_path);
+    if (dot_path != raw_path) add_candidates("", dot_path);
+    add_candidates("library/", raw_path);
+    if (dot_path != raw_path) add_candidates("library/", dot_path);
+    add_candidates("packages/", raw_path);
+    if (dot_path != raw_path) add_candidates("packages/", dot_path);
 
     std::string home_dir;
     if (const char* h = std::getenv("USERPROFILE")) {
@@ -576,11 +590,12 @@ void Transpiler::visit(UseNode* node) {
         home_dir = h;
     }
     if (!home_dir.empty()) {
-        std::string global_pkg = home_dir + "/.wyrm/packages/";
-        possible_paths.push_back(global_pkg + raw_path);
-        possible_paths.push_back(global_pkg + raw_path + ".wyr");
-        possible_paths.push_back(global_pkg + raw_path + "/mod.wyr");
-        possible_paths.push_back(global_pkg + raw_path + "/main.wyr");
+        add_candidates(home_dir + "/.wyrm/packages/", raw_path);
+        add_candidates(home_dir + "/.wyrm/library/", raw_path);
+        if (dot_path != raw_path) {
+            add_candidates(home_dir + "/.wyrm/packages/", dot_path);
+            add_candidates(home_dir + "/.wyrm/library/", dot_path);
+        }
     }
 
     std::string target_path;

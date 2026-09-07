@@ -38,6 +38,8 @@ void register_yaml(Environment& env);
 void register_sdl(Environment& env);
 void register_thread(Environment& env);
 void register_collections(Environment& env);
+void register_random(Environment& env);
+void register_time(Environment& env);
 
 } // namespace stdlib
 } // namespace wyrm
