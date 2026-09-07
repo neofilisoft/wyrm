@@ -170,10 +170,6 @@ wyrpkg remove package_name
 
 See `docs/Docs.md` for the current Wyrm language specification.
 
-## License
-
-MIT License - see LICENSE.
-
 ## Copyright
 
 Copyright (c) 2026 Neofilisoft
