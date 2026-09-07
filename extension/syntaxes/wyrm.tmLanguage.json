@@ -162,12 +162,16 @@
       "patterns": [
         {
           "name": "support.function.builtin.wyr",
-          "match": "\\b(print|input|int|float|str|len|type|abs|max|min|round|pow|append|pop|open|read|write|close|malloc|free|realloc|split|join|trim|upper|lower|contains|replace|starts_with|ends_with|char_at|ord_val|chr_val|to_bytes|from_bytes|read_file|write_file|json_parse|json_encode|json_pretty|yaml_parse|yaml_encode|map_new|map_set|map_get|map_has|map_len|set_new|set_add|set_has|sdl_init|sdl_window|sdl_poll_event|sdl_clear|sdl_present|sdl_delay|sdl_quit|ffi_open|ffi_sym|ffi_call|ffi_close|thread_spawn|thread_join|mutex_new|mutex_lock|mutex_unlock|mutex_destroy)\\b"
+          "match": "\\b(print|input|int|float|str|len|type|abs|max|min|round|pow|append|pop|open|read|write|close|malloc|free|realloc|split|join|trim|upper|lower|contains|replace|starts_with|ends_with|char_at|ord_val|chr_val|to_bytes|from_bytes|read_file|write_file|exit|system|getenv|sys_args|json_parse|json_encode|json_pretty|json_object|json_get|json_set|json_has|yaml_parse|yaml_encode|map_new|map_set|map_get|map_has|map_del|map_keys|map_values|map_len|set_new|set_add|set_has|set_del|set_union|set_intersect|set_to_array|rand|rand_seed|rand_int|rand_range|rand_choice|rand_shuffle|rand_secure|rand_secure_int|rand_bytes_hex|rand_has_trng|rand_trng|rand_trng_int|rand_reseed_trng|sdl_init|sdl_window|sdl_destroy_window|sdl_poll_event|sdl_clear|sdl_present|sdl_draw_rect|sdl_draw_line|sdl_delay|sdl_ticks|sdl_quit|ffi_open|ffi_sym|ffi_call|ffi_close|thread_spawn|thread_join|mutex_new|mutex_lock|mutex_unlock|mutex_destroy)\\b"
         }
       ]
     },
     "operators": {
       "patterns": [
+        {
+          "name": "keyword.operator.arrow.wyr",
+          "match": "->"
+        },
         {
           "name": "keyword.operator.logical.wyr",
           "match": "\\b(and|or|not)\\b|&&|\\|\\||!"
@@ -193,6 +197,14 @@
     "numbers": {
       "patterns": [
         {
+          "name": "constant.numeric.hex.wyr",
+          "match": "\\b0[xX][0-9a-fA-F]+\\b"
+        },
+        {
+          "name": "constant.numeric.binary.wyr",
+          "match": "\\b0[bB][01]+\\b"
+        },
+        {
           "name": "constant.numeric.float.wyr",
           "match": "\\b\\d+\\.\\d+\\b"
         },
@@ -204,6 +216,10 @@
     },
     "punctuation": {
       "patterns": [
+        {
+          "name": "punctuation.separator.colon.wyr",
+          "match": ":"
+        },
         {
           "name": "punctuation.definition.parameters.begin.wyr",
           "match": "\\("
