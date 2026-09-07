@@ -8,7 +8,7 @@ This document contains everything needed to submit the **Wyrm** programming lang
 
 - **Language Name**: Wyrm
 - **Primary Extension**: `.wyr`
-- **Color**: `#c0392b` (Crimson Dragon Red)
+- **Color**: `#6f3799` (Royal Wyrm Purple)
 - **Type**: `programming`
 - **TextMate Scope**: `source.wyrm`
 - **Grammar Location**: [https://github.com/neofilisoft/wyrm/tree/master/extension](https://github.com/neofilisoft/wyrm/tree/master/extension) (or dedicated repository)
@@ -24,7 +24,7 @@ Add the following entry in alphabetical order under `W` in `lib/linguist/languag
 ```yaml
 Wyrm:
   type: programming
-  color: "#c0392b"
+  color: "#6f3799"
   extensions:
     - ".wyr"
   tm_scope: source.wyrm

@@ -1,6 +1,6 @@
 Wyrm:
   type: programming
-  color: "#c0392b"
+  color: "#6f3799"
   extensions:
     - ".wyr"
   tm_scope: source.wyrm
