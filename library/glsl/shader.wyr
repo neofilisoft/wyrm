@@ -46,7 +46,7 @@ fn shader_preprocess(source, defines, version_str) {
 
     var i = 0
     var l = len(defines)
-    repeat {
+    do {
         if i >= l { break }
         var def = defines[i]
         header = header + "#define " + def[0] + " " + def[1] + "\n"

@@ -17,7 +17,7 @@ fn create_entity(id, px, py, vx, vy) {
 fn update_physics(entities, dt, gravity) {
     var i = 0
     var count = len(entities)
-    repeat {
+    do {
         if i >= count { break }
         var e = entities[i]
         if e.active {
@@ -39,7 +39,7 @@ fn count_active(entities) {
     var active_count = 0
     var i = 0
     var total = len(entities)
-    repeat {
+    do {
         if i >= total { break }
         var e = entities[i]
         if e.active {
