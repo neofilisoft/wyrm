@@ -1,0 +1,58 @@
+struct Point {
+    x,
+    y,
+
+    fn distance_sq(self) {
+        return self.x * self.x + self.y * self.y
+    }
+
+    fn translate(self, dx, dy) {
+        self.x = self.x + dx
+        self.y = self.y + dy
+    }
+}
+
+struct Hero {
+    name,
+    hp,
+    max_hp,
+
+    fn is_alive(self) {
+        return self.hp > 0
+    }
+
+    fn take_damage(self, amount) {
+        self.hp = self.hp - amount
+        if self.hp < 0 {
+            self.hp = 0
+        }
+    }
+}
+
+fn main() {
+    print("--- Testing Wyrm Structs & Methods ---")
+
+    var p = Point(3, 4)
+    print("Point p:", p)
+    print("p.x =", p.x, "p.y =", p.y)
+    print("p.distance_sq() =", p.distance_sq())
+
+    p.translate(10, 20)
+    print("After translate(10, 20):", p)
+    print("New p.x =", p.x, "p.y =", p.y)
+    print("New p.distance_sq() =", p.distance_sq())
+
+    var hero = Hero("Aria", 100, 100)
+    print("hero.name =", hero.name)
+    print("Hero struct:", hero)
+    print("Hero is alive?", hero.is_alive())
+
+    hero.take_damage(35)
+    print("After taking 35 dmg, hp =", hero.hp)
+
+    hero.take_damage(80)
+    print("After taking 80 dmg, hp =", hero.hp)
+    print("Hero is alive?", hero.is_alive())
+
+    print("\nStruct & Method tests passed successfully!")
+}

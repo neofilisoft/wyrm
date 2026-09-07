@@ -1,0 +1,23 @@
+use std.sdl;
+
+fn main() {
+    sdl_init()
+    var win = sdl_window("My Game", 800, 600)
+    var running = true
+
+    do {
+        var ev = sdl_poll_event()
+        if ev["type"] == SDL_QUIT {
+            running = false
+        }
+        if ev["type"] == SDL_KEYDOWN {
+            print("Key:", ev["key"])
+        }
+
+        sdl_clear(win, 0, 0, 0)
+        sdl_present(win)
+        sdl_delay(16)
+    } til running == false
+
+    sdl_quit()
+}

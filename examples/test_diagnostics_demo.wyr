@@ -1,0 +1,10 @@
+// Deliberate syntax error to test Clang/Rust-style visual error diagnostics
+fn compute(a: i32, b: i32): i32 {
+    var result = a +
+    return result
+}
+
+fn main() {
+    var x = compute(10, 20)
+    print(x)
+}

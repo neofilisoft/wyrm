@@ -1,0 +1,71 @@
+// Wyrm GLSL Shader Pipeline & Buffer Layout Utilities
+// Provides shader stage management and buffer alignment tools for game & graphics engines
+
+var SHADER_STAGE_VERTEX = 1
+var SHADER_STAGE_FRAGMENT = 2
+var SHADER_STAGE_COMPUTE = 3
+var SHADER_STAGE_GEOMETRY = 4
+
+struct ShaderStage {
+    stage_type,
+    source,
+    entrypoint
+}
+
+struct ShaderProgram {
+    vertex_stage,
+    fragment_stage,
+    uniforms,
+    attributes
+}
+
+fn shader_create_vertex(source) {
+    return ShaderStage(SHADER_STAGE_VERTEX, source, "main")
+}
+
+fn shader_create_fragment(source) {
+    return ShaderStage(SHADER_STAGE_FRAGMENT, source, "main")
+}
+
+fn shader_create_compute(source) {
+    return ShaderStage(SHADER_STAGE_COMPUTE, source, "main")
+}
+
+fn shader_program(v_stage, f_stage) {
+    return ShaderProgram(v_stage, f_stage, [], [])
+}
+
+// Preprocessor: inject version header and macro definitions
+fn shader_preprocess(source, defines, version_str) {
+    var header = ""
+    if version_str != "" {
+        header = "#version " + version_str + "\n"
+    } else {
+        header = "#version 330 core\n"
+    }
+
+    var i = 0
+    var l = len(defines)
+    repeat {
+        if i >= l { break }
+        var def = defines[i]
+        header = header + "#define " + def[0] + " " + def[1] + "\n"
+        i = i + 1
+    } til i >= l
+
+    return header + source
+}
+
+// --- std140 / std430 Uniform Buffer Alignment Utilities ---
+
+fn std140_align_offset(offset, alignment) {
+    var remainder = offset - (int(offset / alignment) * alignment)
+    if remainder == 0 { return offset }
+    return offset + (alignment - remainder)
+}
+
+fn std140_size_float() { return 4 }
+fn std140_size_vec2()  { return 8 }
+fn std140_size_vec3()  { return 16 } // Aligned to 16 bytes in std140
+fn std140_size_vec4()  { return 16 }
+fn std140_size_mat4()  { return 64 } // 4 column vectors * 16 bytes

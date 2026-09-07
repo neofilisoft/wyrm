@@ -47,6 +47,19 @@ public:
     bool is_builtin() const override { return true; }
 };
 
+class StructType : public Callable {
+public:
+    std::string name;
+    std::vector<std::string> fields;
+    std::unordered_map<std::string, std::shared_ptr<Function>> methods;
+
+    StructType(std::string n, std::vector<std::string> f, std::unordered_map<std::string, std::shared_ptr<Function>> m)
+        : name(std::move(n)), fields(std::move(f)), methods(std::move(m)) {}
+
+    Value call(const std::vector<Value>& args, Interpreter* interpreter) override;
+    bool is_builtin() const override { return false; }
+};
+
 struct ReturnSignal {
     Value value;
 };
@@ -61,6 +74,9 @@ public:
     std::string source_dir;
     bool in_unsafe;
     std::vector<std::string> cli_args;
+    int call_depth_ = 0;
+    static constexpr int MAX_CALL_DEPTH = 500;
+    std::unordered_map<std::string, std::shared_ptr<StructType>> struct_types_;
 
     Interpreter(const std::string& src_dir = ".", std::vector<std::string> args = {});
     ~Interpreter() override = default;
@@ -100,6 +116,10 @@ public:
     void visit(ArenaNode* node) override;
     void visit(ArenaAllocNode* node) override;
     void visit(ArenaResetNode* node) override;
+    void visit(StructDefNode* node) override;
+    void visit(MemberAccessNode* node) override;
+    void visit(MemberAssignNode* node) override;
+    void visit(MethodCallNode* node) override;
 
 private:
     Value last_value_; // temporary storage for visited node returns

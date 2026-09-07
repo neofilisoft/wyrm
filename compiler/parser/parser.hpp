@@ -36,6 +36,7 @@ private:
     ASTNodePtr unsafe_block();
     ASTNodePtr owned_declaration();
     ASTNodePtr arena_declaration();
+    ASTNodePtr struct_def();
     ASTNodePtr variable_declaration(const std::string& var_type);
     
     ASTNodePtr assignment();

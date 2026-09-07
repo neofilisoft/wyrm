@@ -21,8 +21,14 @@ std::string Transpiler::load_c_runtime() {
     std::string lib_dir = home_dir + "/.wyrm/packages/wyrmlang/lib/";
     
     std::vector<std::string> files = {
-        "wyrm_core.h", "wyrm_arena.h", "wyrm_str.h",
-        "wyrm_core.c", "wyrm_arena.c", "wyrm_str.c"
+        "wyrm_core.h", "wyrm_arena.h", "wyrm_str.h", "wyrm_ffi.h",
+        "stdlib/wyrm_std_json.h", "stdlib/wyrm_std_yaml.h",
+        "stdlib/wyrm_std_sdl.h", "stdlib/wyrm_std_collections.h",
+        "stdlib/wyrm_std_random.h", "stdlib/wyrm_std_time.h",
+        "wyrm_core.c", "wyrm_arena.c", "wyrm_str.c", "wyrm_ffi.c",
+        "stdlib/wyrm_std_json.c", "stdlib/wyrm_std_yaml.c",
+        "stdlib/wyrm_std_sdl.c", "stdlib/wyrm_std_collections.c",
+        "stdlib/wyrm_std_random.c", "stdlib/wyrm_std_time.c"
     };
 
     std::string result;
@@ -45,9 +51,11 @@ std::string Transpiler::load_c_runtime() {
             if (idx != std::string::npos) {
                 std::string stripped = line.substr(idx);
                 if (stripped.rfind("#include \"wyrm_", 0) == 0) continue;
+                if (stripped.rfind("#include \"../wyrm_", 0) == 0) continue;
+                if (stripped.rfind("#include \"stdlib/", 0) == 0) continue;
                 if (stripped.rfind("#ifndef WYRM_", 0) == 0) continue;
                 if (stripped.rfind("#define WYRM_", 0) == 0) continue;
-                if (stripped.rfind("#endif // WYRM_", 0) == 0) continue;
+                if (stripped.rfind("#endif", 0) == 0 && stripped.find("WYRM_") != std::string::npos) continue;
             }
             result += line + "\n";
         }
@@ -138,6 +146,24 @@ std::string Transpiler::transpile(std::vector<ASTNodePtr>& ast) {
     }
 
     header_lines.push_back("\n// Global variable declarations");
+    for (const auto& stmt : ast) {
+        auto* assign = dynamic_cast<AssignmentNode*>(stmt.get());
+        if (assign && assign->is_declaration) {
+            std::string g_name = assign->var_name->name;
+            if (!declared_globals.count(g_name)) {
+                declared_globals.insert(g_name);
+                header_lines.push_back("Value wyrm_var_" + g_name + ";");
+            }
+        }
+        auto* owned = dynamic_cast<OwnedDeclNode*>(stmt.get());
+        if (owned) {
+            std::string g_name = owned->var_name->name;
+            if (!declared_globals.count(g_name)) {
+                declared_globals.insert(g_name);
+                header_lines.push_back("Value wyrm_var_" + g_name + ";  /* owned global */");
+            }
+        }
+    }
 
     for (const auto& stmt : ast) {
         if (has_main_def) {
@@ -278,14 +304,14 @@ void Transpiler::visit(AssignmentNode* node) {
                 scopes.back().allocations.push_back(var_name);
             }
         } else {
-            if (!declared_locals.count(var_name)) {
+            if (declared_locals.count(var_name) || declared_globals.count(var_name)) {
+                emit(c_var + " = " + val_expr + ";");
+            } else {
                 declared_locals.insert(var_name);
                 emit("Value " + c_var + " = " + val_expr + ";");
                 if (is_malloc && !scopes.empty()) {
                     scopes.back().allocations.push_back(var_name);
                 }
-            } else {
-                emit(c_var + " = " + val_expr + ";");
             }
         }
     } else {
@@ -530,13 +556,30 @@ void Transpiler::visit(ReturnNode* node) {
 
 void Transpiler::visit(UseNode* node) {
     std::string raw_path = node->module_path;
+    if (raw_path == "std.ffi" || raw_path == "std.json" || raw_path == "std.yaml" ||
+        raw_path == "std.sdl" || raw_path == "std.thread" || raw_path == "std.collections" ||
+        raw_path == "std.random" || raw_path == "std.time") {
+        return;
+    }
+    std::string dot_path = raw_path;
+    for (char& c : dot_path) {
+        if (c == '.') c = '/';
+    }
+
     std::vector<std::string> possible_paths;
-    possible_paths.push_back(raw_path);
-    possible_paths.push_back(raw_path + ".wyr");
-    possible_paths.push_back("packages/" + raw_path);
-    possible_paths.push_back("packages/" + raw_path + ".wyr");
-    possible_paths.push_back("packages/" + raw_path + "/mod.wyr");
-    possible_paths.push_back("packages/" + raw_path + "/main.wyr");
+    auto add_candidates = [&](const std::string& prefix, const std::string& p) {
+        possible_paths.push_back(prefix + p);
+        possible_paths.push_back(prefix + p + ".wyr");
+        possible_paths.push_back(prefix + p + "/mod.wyr");
+        possible_paths.push_back(prefix + p + "/main.wyr");
+    };
+
+    add_candidates("", raw_path);
+    if (dot_path != raw_path) add_candidates("", dot_path);
+    add_candidates("library/", raw_path);
+    if (dot_path != raw_path) add_candidates("library/", dot_path);
+    add_candidates("packages/", raw_path);
+    if (dot_path != raw_path) add_candidates("packages/", dot_path);
 
     std::string home_dir;
     if (const char* h = std::getenv("USERPROFILE")) {
@@ -545,11 +588,12 @@ void Transpiler::visit(UseNode* node) {
         home_dir = h;
     }
     if (!home_dir.empty()) {
-        std::string global_pkg = home_dir + "/.wyrm/packages/";
-        possible_paths.push_back(global_pkg + raw_path);
-        possible_paths.push_back(global_pkg + raw_path + ".wyr");
-        possible_paths.push_back(global_pkg + raw_path + "/mod.wyr");
-        possible_paths.push_back(global_pkg + raw_path + "/main.wyr");
+        add_candidates(home_dir + "/.wyrm/packages/", raw_path);
+        add_candidates(home_dir + "/.wyrm/library/", raw_path);
+        if (dot_path != raw_path) {
+            add_candidates(home_dir + "/.wyrm/packages/", dot_path);
+            add_candidates(home_dir + "/.wyrm/library/", dot_path);
+        }
     }
 
     std::string target_path;
@@ -691,6 +735,63 @@ void Transpiler::visit(ArenaAllocNode* node) {
 void Transpiler::visit(ArenaResetNode* node) {
     std::string c_var = "wyrm_arena_" + node->arena_name;
     last_result_ = "val_arena_reset(" + c_var + ")";
+}
+
+void Transpiler::visit(StructDefNode* node) {
+    std::string fn_name = "wyrm_fn_" + node->name;
+    std::string params_str;
+    for (size_t i = 0; i < node->fields.size(); ++i) {
+        params_str += "Value wyrm_var_" + node->fields[i];
+        if (i + 1 < node->fields.size()) params_str += ", ";
+    }
+    header_lines.push_back("Value " + fn_name + "(" + params_str + ");");
+
+    emit("Value " + fn_name + "(" + params_str + ") {");
+    if (!node->fields.empty()) {
+        std::string fields_array = "const char *field_names[] = { ";
+        std::string vals_array = "Value field_vals[] = { ";
+        for (size_t i = 0; i < node->fields.size(); ++i) {
+            fields_array += "\"" + node->fields[i] + "\"";
+            vals_array += "wyrm_var_" + node->fields[i];
+            if (i + 1 < node->fields.size()) {
+                fields_array += ", ";
+                vals_array += ", ";
+            }
+        }
+        fields_array += " };";
+        vals_array += " };";
+        emit(fields_array);
+        emit(vals_array);
+        emit("return val_struct_create(\"" + node->name + "\", " + std::to_string(node->fields.size()) + ", field_names, field_vals);");
+    } else {
+        emit("return val_struct_create(\"" + node->name + "\", 0, NULL, NULL);");
+    }
+    emit("}\n");
+
+    for (auto& method : node->methods) {
+        visit_statement(method.get());
+    }
+    last_result_ = "";
+}
+
+void Transpiler::visit(MemberAccessNode* node) {
+    std::string obj_code = evaluate(node->obj.get());
+    last_result_ = "val_struct_get(" + obj_code + ", \"" + node->member + "\")";
+}
+
+void Transpiler::visit(MemberAssignNode* node) {
+    std::string obj_code = evaluate(node->obj.get());
+    std::string val_code = evaluate(node->value.get());
+    last_result_ = "val_struct_set(" + obj_code + ", \"" + node->member + "\", " + val_code + ")";
+}
+
+void Transpiler::visit(MethodCallNode* node) {
+    std::string obj_code = evaluate(node->obj.get());
+    std::string args_str = obj_code;
+    for (auto& arg : node->args) {
+        args_str += ", " + evaluate(arg.get());
+    }
+    last_result_ = "wyrm_fn_" + node->method_name + "(" + args_str + ")";
 }
 
 } // namespace wyrm

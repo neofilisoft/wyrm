@@ -1,0 +1,8 @@
+// Wyrm GLSL Graphics & Math Library Master Module
+// Aligned with the OpenGL Shading Language (GLSL) Specification
+// Importable via: use glsl; or use library.glsl;
+
+use library.glsl.math;
+use library.glsl.vec;
+use library.glsl.mat;
+use library.glsl.shader;

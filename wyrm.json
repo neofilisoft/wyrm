@@ -1,0 +1,29 @@
+﻿{
+    "version": "3.2.1",
+    "description": "A static systems programming language with a self-hosted compiler and gradual static typing",
+    "homepage": "https://github.com/neofilisoft/wyrm",
+    "license": "MIT",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/neofilisoft/wyrm/releases/download/v3.2.1/wyrm-v3.2.1-windows-x64.zip",
+            "hash": "9EDF2423AD5AF3DAC554C132864CC984E6E42E2503AC7EBE7ED09DA59C8C06DA"
+        }
+    },
+    "bin": [
+        "bin\\wyrmc.exe",
+        "bin\\wyrpkg.exe"
+    ],
+    "post_install": [
+        "$targetDir = Join-Path $env:USERPROFILE '.wyrm\\packages\\wyrmlang'",
+        "if (!(Test-Path $targetDir)) { New-Item -ItemType Directory -Force -Path $targetDir | Out-Null }",
+        "Copy-Item -Path (Join-Path $dir 'packages\\wyrmlang\\*') -Destination $targetDir -Recurse -Force"
+    ],
+    "checkver": "github",
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/neofilisoft/wyrm/releases/download/v$version/wyrm-v$version-windows-x64.zip"
+            }
+        }
+    }
+}

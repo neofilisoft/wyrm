@@ -1,0 +1,336 @@
+// Wyrm GLSL Matrix Library - Mat2, Mat3, Mat4 and 3D Transformations
+// Aligned with the OpenGL Shading Language (GLSL) Specification (Column-Major)
+
+use library.glsl.math;
+use library.glsl.vec;
+
+struct Mat2 {
+    m00, m10,
+    m01, m11
+}
+
+struct Mat3 {
+    m00, m10, m20,
+    m01, m11, m21,
+    m02, m12, m22
+}
+
+struct Mat4 {
+    // Column 0
+    m00, m10, m20, m30,
+    // Column 1
+    m01, m11, m21, m31,
+    // Column 2
+    m02, m12, m22, m32,
+    // Column 3
+    m03, m13, m23, m33
+}
+
+// --- Matrix 2 Operations ---
+
+fn mat2_identity() {
+    return Mat2(1.0, 0.0, 0.0, 1.0)
+}
+
+fn mat2_zero() {
+    return Mat2(0.0, 0.0, 0.0, 0.0)
+}
+
+fn mat2_det(m) {
+    return m.m00 * m.m11 - m.m01 * m.m10
+}
+
+fn mat2_transpose(m) {
+    return Mat2(m.m00, m.m01, m.m10, m.m11)
+}
+
+fn mat2_inverse(m) {
+    var d = mat2_det(m)
+    if d == 0.0 { return mat2_identity() }
+    var inv_d = 1.0 / d
+    return Mat2(m.m11 * inv_d, -m.m10 * inv_d, -m.m01 * inv_d, m.m00 * inv_d)
+}
+
+fn mat2_mul(a, b) {
+    return Mat2(a.m00 * b.m00 + a.m01 * b.m10, a.m10 * b.m00 + a.m11 * b.m10, a.m00 * b.m01 + a.m01 * b.m11, a.m10 * b.m01 + a.m11 * b.m11)
+}
+
+// --- Matrix 3 Operations ---
+
+fn mat3_identity() {
+    return Mat3(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
+}
+
+fn mat3_zero() {
+    return Mat3(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+}
+
+fn mat3_transpose(m) {
+    return Mat3(m.m00, m.m01, m.m02, m.m10, m.m11, m.m12, m.m20, m.m21, m.m22)
+}
+
+fn mat3_det(m) {
+    return m.m00 * (m.m11 * m.m22 - m.m12 * m.m21) - m.m01 * (m.m10 * m.m22 - m.m12 * m.m20) + m.m02 * (m.m10 * m.m21 - m.m11 * m.m20)
+}
+
+fn mat3_mul(a, b) {
+    return Mat3(a.m00 * b.m00 + a.m01 * b.m10 + a.m02 * b.m20, a.m10 * b.m00 + a.m11 * b.m10 + a.m12 * b.m20, a.m20 * b.m00 + a.m21 * b.m10 + a.m22 * b.m20, a.m00 * b.m01 + a.m01 * b.m11 + a.m02 * b.m21, a.m10 * b.m01 + a.m11 * b.m11 + a.m12 * b.m21, a.m20 * b.m01 + a.m21 * b.m11 + a.m22 * b.m21, a.m00 * b.m02 + a.m01 * b.m12 + a.m02 * b.m22, a.m10 * b.m02 + a.m11 * b.m12 + a.m12 * b.m22, a.m20 * b.m02 + a.m21 * b.m12 + a.m22 * b.m22)
+}
+
+// --- Matrix 4 Operations ---
+
+fn mat4_identity() {
+    return Mat4(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0)
+}
+
+fn mat4_zero() {
+    return Mat4(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+}
+
+fn mat4_transpose(m) {
+    return Mat4(m.m00, m.m01, m.m02, m.m03, m.m10, m.m11, m.m12, m.m13, m.m20, m.m21, m.m22, m.m23, m.m30, m.m31, m.m32, m.m33)
+}
+
+fn mat4_to_array(m) {
+    return [m.m00, m.m10, m.m20, m.m30, m.m01, m.m11, m.m21, m.m31, m.m02, m.m12, m.m22, m.m32, m.m03, m.m13, m.m23, m.m33]
+}
+
+// --- Matrix 4 Multiplication ---
+
+fn mat4_mul(a, b) {
+    var c00 = a.m00 * b.m00 + a.m01 * b.m10 + a.m02 * b.m20 + a.m03 * b.m30
+    var c10 = a.m10 * b.m00 + a.m11 * b.m10 + a.m12 * b.m20 + a.m13 * b.m30
+    var c20 = a.m20 * b.m00 + a.m21 * b.m10 + a.m22 * b.m20 + a.m23 * b.m30
+    var c30 = a.m30 * b.m00 + a.m31 * b.m10 + a.m32 * b.m20 + a.m33 * b.m30
+
+    var c01 = a.m00 * b.m01 + a.m01 * b.m11 + a.m02 * b.m21 + a.m03 * b.m31
+    var c11 = a.m10 * b.m01 + a.m11 * b.m11 + a.m12 * b.m21 + a.m13 * b.m31
+    var c21 = a.m20 * b.m01 + a.m21 * b.m11 + a.m22 * b.m21 + a.m23 * b.m31
+    var c31 = a.m30 * b.m01 + a.m31 * b.m11 + a.m32 * b.m21 + a.m33 * b.m31
+
+    var c02 = a.m00 * b.m02 + a.m01 * b.m12 + a.m02 * b.m22 + a.m03 * b.m32
+    var c12 = a.m10 * b.m02 + a.m11 * b.m12 + a.m12 * b.m22 + a.m13 * b.m32
+    var c22 = a.m20 * b.m02 + a.m21 * b.m12 + a.m22 * b.m22 + a.m23 * b.m32
+    var c32 = a.m30 * b.m02 + a.m31 * b.m12 + a.m32 * b.m22 + a.m33 * b.m32
+
+    var c03 = a.m00 * b.m03 + a.m01 * b.m13 + a.m02 * b.m23 + a.m03 * b.m33
+    var c13 = a.m10 * b.m03 + a.m11 * b.m13 + a.m12 * b.m23 + a.m13 * b.m33
+    var c23 = a.m20 * b.m03 + a.m21 * b.m13 + a.m22 * b.m23 + a.m23 * b.m33
+    var c33 = a.m30 * b.m03 + a.m31 * b.m13 + a.m32 * b.m23 + a.m33 * b.m33
+
+    return Mat4(c00, c10, c20, c30, c01, c11, c21, c31, c02, c12, c22, c32, c03, c13, c23, c33)
+}
+
+fn mat4_mul_vec4(m, v) {
+    var rx = m.m00 * v.x + m.m01 * v.y + m.m02 * v.z + m.m03 * v.w
+    var ry = m.m10 * v.x + m.m11 * v.y + m.m12 * v.z + m.m13 * v.w
+    var rz = m.m20 * v.x + m.m21 * v.y + m.m22 * v.z + m.m23 * v.w
+    var rw = m.m30 * v.x + m.m31 * v.y + m.m32 * v.z + m.m33 * v.w
+    return Vec4(rx, ry, rz, rw)
+}
+
+fn mat4_mul_vec3(m, v, w) {
+    var v4 = Vec4(v.x, v.y, v.z, w)
+    var res4 = mat4_mul_vec4(m, v4)
+    return Vec3(res4.x, res4.y, res4.z)
+}
+
+// --- Transformations ---
+
+fn mat4_translate(tx, ty, tz) {
+    var m = mat4_identity()
+    m.m03 = float(tx)
+    m.m13 = float(ty)
+    m.m23 = float(tz)
+    return m
+}
+
+fn mat4_translation_vec3(v) {
+    return mat4_translate(v.x, v.y, v.z)
+}
+
+fn mat4_scale(sx, sy, sz) {
+    var m = mat4_identity()
+    m.m00 = float(sx)
+    m.m11 = float(sy)
+    m.m22 = float(sz)
+    return m
+}
+
+fn mat4_scale_uniform(s) {
+    var v = float(s)
+    return mat4_scale(v, v, v)
+}
+
+fn mat4_rotate_x(rad) {
+    var c = cos(rad)
+    var s = sin(rad)
+    var m = mat4_identity()
+    m.m11 = c
+    m.m12 = -s
+    m.m21 = s
+    m.m22 = c
+    return m
+}
+
+fn mat4_rotate_y(rad) {
+    var c = cos(rad)
+    var s = sin(rad)
+    var m = mat4_identity()
+    m.m00 = c
+    m.m02 = s
+    m.m20 = -s
+    m.m22 = c
+    return m
+}
+
+fn mat4_rotate_z(rad) {
+    var c = cos(rad)
+    var s = sin(rad)
+    var m = mat4_identity()
+    m.m00 = c
+    m.m01 = -s
+    m.m10 = s
+    m.m11 = c
+    return m
+}
+
+fn mat4_rotate(axis_v3, rad) {
+    var a = vec3_normalize(axis_v3)
+    var c = cos(rad)
+    var s = sin(rad)
+    var omc = 1.0 - c
+
+    var m = mat4_identity()
+    m.m00 = c + a.x * a.x * omc
+    m.m10 = a.y * a.x * omc + a.z * s
+    m.m20 = a.z * a.x * omc - a.y * s
+
+    m.m01 = a.x * a.y * omc - a.z * s
+    m.m11 = c + a.y * a.y * omc
+    m.m21 = a.z * a.y * omc + a.x * s
+
+    m.m02 = a.x * a.z * omc + a.y * s
+    m.m12 = a.y * a.z * omc - a.x * s
+    m.m22 = c + a.z * a.z * omc
+
+    return m
+}
+
+// --- Projections & Camera ---
+
+fn mat4_perspective(fovy_rad, aspect, near, far) {
+    var tan_half_fovy = tan(fovy_rad / 2.0)
+    var f = 1.0 / tan_half_fovy
+    var nf = 1.0 / (near - far)
+
+    var m = mat4_zero()
+    m.m00 = f / aspect
+    m.m11 = f
+    m.m22 = (far + near) * nf
+    m.m32 = -1.0
+    m.m23 = 2.0 * far * near * nf
+    return m
+}
+
+fn mat4_ortho(left, right, bottom, top, near, far) {
+    var rl = 1.0 / (right - left)
+    var tb = 1.0 / (top - bottom)
+    var fn_inv = 1.0 / (far - near)
+
+    var m = mat4_identity()
+    m.m00 = 2.0 * rl
+    m.m11 = 2.0 * tb
+    m.m22 = -2.0 * fn_inv
+
+    m.m03 = -(right + left) * rl
+    m.m13 = -(top + bottom) * tb
+    m.m23 = -(far + near) * fn_inv
+    return m
+}
+
+fn mat4_look_at(eye, center, up) {
+    var f = vec3_normalize(vec3_sub(center, eye))
+    var s = vec3_normalize(vec3_cross(f, up))
+    var u = vec3_cross(s, f)
+
+    var m = mat4_identity()
+    m.m00 = s.x
+    m.m01 = s.y
+    m.m02 = s.z
+    m.m10 = u.x
+    m.m11 = u.y
+    m.m12 = u.z
+    m.m20 = -f.x
+    m.m21 = -f.y
+    m.m22 = -f.z
+
+    m.m03 = -vec3_dot(s, eye)
+    m.m13 = -vec3_dot(u, eye)
+    m.m23 = vec3_dot(f, eye)
+    return m
+}
+
+// --- Analytical 4x4 Inversion ---
+
+fn mat4_determinant(m) {
+    var s0 = m.m00 * m.m11 - m.m10 * m.m01
+    var s1 = m.m00 * m.m12 - m.m10 * m.m02
+    var s2 = m.m00 * m.m13 - m.m10 * m.m03
+    var s3 = m.m01 * m.m12 - m.m11 * m.m02
+    var s4 = m.m01 * m.m13 - m.m11 * m.m03
+    var s5 = m.m02 * m.m13 - m.m12 * m.m03
+
+    var c5 = m.m22 * m.m33 - m.m32 * m.m23
+    var c4 = m.m21 * m.m33 - m.m31 * m.m23
+    var c3 = m.m21 * m.m32 - m.m31 * m.m22
+    var c2 = m.m20 * m.m33 - m.m30 * m.m23
+    var c1 = m.m20 * m.m32 - m.m30 * m.m22
+    var c0 = m.m20 * m.m31 - m.m30 * m.m21
+
+    return s0 * c5 - s1 * c4 + s2 * c3 + s3 * c2 - s4 * c1 + s5 * c0
+}
+
+fn mat4_inverse(m) {
+    var s0 = m.m00 * m.m11 - m.m10 * m.m01
+    var s1 = m.m00 * m.m12 - m.m10 * m.m02
+    var s2 = m.m00 * m.m13 - m.m10 * m.m03
+    var s3 = m.m01 * m.m12 - m.m11 * m.m02
+    var s4 = m.m01 * m.m13 - m.m11 * m.m03
+    var s5 = m.m02 * m.m13 - m.m12 * m.m03
+
+    var c5 = m.m22 * m.m33 - m.m32 * m.m23
+    var c4 = m.m21 * m.m33 - m.m31 * m.m23
+    var c3 = m.m21 * m.m32 - m.m31 * m.m22
+    var c2 = m.m20 * m.m33 - m.m30 * m.m23
+    var c1 = m.m20 * m.m32 - m.m30 * m.m22
+    var c0 = m.m20 * m.m31 - m.m30 * m.m21
+
+    var det = s0 * c5 - s1 * c4 + s2 * c3 + s3 * c2 - s4 * c1 + s5 * c0
+    if det == 0.0 {
+        return mat4_identity()
+    }
+    var inv_det = 1.0 / det
+
+    var r00 = ( m.m11 * c5 - m.m12 * c4 + m.m13 * c3) * inv_det
+    var r10 = (-m.m10 * c5 + m.m12 * c2 - m.m13 * c1) * inv_det
+    var r20 = ( m.m10 * c4 - m.m11 * c2 + m.m13 * c0) * inv_det
+    var r30 = (-m.m10 * c3 + m.m11 * c1 - m.m12 * c0) * inv_det
+
+    var r01 = (-m.m01 * c5 + m.m02 * c4 - m.m03 * c3) * inv_det
+    var r11 = ( m.m00 * c5 - m.m02 * c2 + m.m03 * c1) * inv_det
+    var r21 = (-m.m00 * c4 + m.m01 * c2 - m.m03 * c0) * inv_det
+    var r31 = ( m.m00 * c3 - m.m01 * c1 + m.m02 * c0) * inv_det
+
+    var r02 = ( m.m31 * s5 - m.m32 * s4 + m.m33 * s3) * inv_det
+    var r12 = (-m.m30 * s5 + m.m32 * s2 - m.m33 * s1) * inv_det
+    var r22 = ( m.m30 * s4 - m.m31 * s2 + m.m33 * s0) * inv_det
+    var r32 = (-m.m30 * s3 + m.m31 * s1 - m.m32 * s0) * inv_det
+
+    var r03 = (-m.m21 * s5 + m.m22 * s4 - m.m23 * s3) * inv_det
+    var r13 = ( m.m20 * s5 - m.m22 * s2 + m.m23 * s1) * inv_det
+    var r23 = (-m.m20 * s4 + m.m21 * s2 - m.m23 * s0) * inv_det
+    var r33 = ( m.m20 * s3 - m.m21 * s1 + m.m22 * s0) * inv_det
+
+    return Mat4(r00, r10, r20, r30, r01, r11, r21, r31, r02, r12, r22, r32, r03, r13, r23, r33)
+}

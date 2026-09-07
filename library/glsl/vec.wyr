@@ -1,0 +1,215 @@
+// Wyrm GLSL Vector Library - Vec2, Vec3, Vec4 and Geometric Operations
+// Aligned with the OpenGL Shading Language (GLSL) Specification
+
+use library.glsl.math;
+
+struct Vec2 { x, y }
+struct Vec3 { x, y, z }
+struct Vec4 { x, y, z, w }
+
+struct IVec2 { x, y }
+struct IVec3 { x, y, z }
+struct IVec4 { x, y, z, w }
+
+struct BVec2 { x, y }
+struct BVec3 { x, y, z }
+struct BVec4 { x, y, z, w }
+
+// --- Constructors ---
+
+fn vec2(x, y) {
+    return Vec2(float(x), float(y))
+}
+
+fn vec2_scalar(s) {
+    var v = float(s)
+    return Vec2(v, v)
+}
+
+fn vec3(x, y, z) {
+    return Vec3(float(x), float(y), float(z))
+}
+
+fn vec3_from_vec2(v, z) {
+    return Vec3(v.x, v.y, float(z))
+}
+
+fn vec3_scalar(s) {
+    var v = float(s)
+    return Vec3(v, v, v)
+}
+
+fn vec4(x, y, z, w) {
+    return Vec4(float(x), float(y), float(z), float(w))
+}
+
+fn vec4_from_vec3(v, w) {
+    return Vec4(v.x, v.y, v.z, float(w))
+}
+
+fn vec4_scalar(s) {
+    var v = float(s)
+    return Vec4(v, v, v, v)
+}
+
+fn ivec2(x, y) {
+    return IVec2(int(x), int(y))
+}
+
+fn ivec3(x, y, z) {
+    return IVec3(int(x), int(y), int(z))
+}
+
+fn ivec4(x, y, z, w) {
+    return IVec4(int(x), int(y), int(z), int(w))
+}
+
+fn bvec2(x, y) {
+    return BVec2(x, y)
+}
+
+fn bvec3(x, y, z) {
+    return BVec3(x, y, z)
+}
+
+fn bvec4(x, y, z, w) {
+    return BVec4(x, y, z, w)
+}
+
+// --- Vector 2 Arithmetic ---
+
+fn vec2_add(a, b) { return Vec2(a.x + b.x, a.y + b.y) }
+fn vec2_sub(a, b) { return Vec2(a.x - b.x, a.y - b.y) }
+fn vec2_mul(a, b) { return Vec2(a.x * b.x, a.y * b.y) }
+fn vec2_div(a, b) { return Vec2(a.x / b.x, a.y / b.y) }
+fn vec2_scale(v, s) { return Vec2(v.x * s, v.y * s) }
+fn vec2_neg(v) { return Vec2(-v.x, -v.y) }
+
+// --- Vector 3 Arithmetic ---
+
+fn vec3_add(a, b) { return Vec3(a.x + b.x, a.y + b.y, a.z + b.z) }
+fn vec3_sub(a, b) { return Vec3(a.x - b.x, a.y - b.y, a.z - b.z) }
+fn vec3_mul(a, b) { return Vec3(a.x * b.x, a.y * b.y, a.z * b.z) }
+fn vec3_div(a, b) { return Vec3(a.x / b.x, a.y / b.y, a.z / b.z) }
+fn vec3_scale(v, s) { return Vec3(v.x * s, v.y * s, v.z * s) }
+fn vec3_neg(v) { return Vec3(-v.x, -v.y, -v.z) }
+
+// --- Vector 4 Arithmetic ---
+
+fn vec4_add(a, b) { return Vec4(a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w) }
+fn vec4_sub(a, b) { return Vec4(a.x - b.x, a.y - b.y, a.z - b.z, a.w - b.w) }
+fn vec4_mul(a, b) { return Vec4(a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w) }
+fn vec4_div(a, b) { return Vec4(a.x / b.x, a.y / b.y, a.z / b.z, a.w / b.w) }
+fn vec4_scale(v, s) { return Vec4(v.x * s, v.y * s, v.z * s, v.w * s) }
+fn vec4_neg(v) { return Vec4(-v.x, -v.y, -v.z, -v.w) }
+
+// --- Specific Vector Operations ---
+
+fn vec2_dot(a, b) { return a.x * b.x + a.y * b.y }
+fn vec2_length_sq(v) { return v.x * v.x + v.y * v.y }
+fn vec2_length(v) { return sqrt(vec2_length_sq(v)) }
+fn vec2_normalize(v) {
+    var l = vec2_length(v)
+    if l == 0.0 { return Vec2(0.0, 0.0) }
+    return Vec2(v.x / l, v.y / l)
+}
+fn vec2_distance(a, b) {
+    var dx = a.x - b.x
+    var dy = a.y - b.y
+    return sqrt(dx * dx + dy * dy)
+}
+
+fn vec3_dot(a, b) { return a.x * b.x + a.y * b.y + a.z * b.z }
+fn vec3_length_sq(v) { return v.x * v.x + v.y * v.y + v.z * v.z }
+fn vec3_length(v) { return sqrt(vec3_length_sq(v)) }
+fn vec3_normalize(v) {
+    var l = vec3_length(v)
+    if l == 0.0 { return Vec3(0.0, 0.0, 0.0) }
+    return Vec3(v.x / l, v.y / l, v.z / l)
+}
+fn vec3_distance(a, b) {
+    var dx = a.x - b.x
+    var dy = a.y - b.y
+    var dz = a.z - b.z
+    return sqrt(dx * dx + dy * dy + dz * dz)
+}
+fn vec3_cross(a, b) {
+    return Vec3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x)
+}
+
+fn vec4_dot(a, b) { return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w }
+fn vec4_length_sq(v) { return v.x * v.x + v.y * v.y + v.z * v.z + v.w * v.w }
+fn vec4_length(v) { return sqrt(vec4_length_sq(v)) }
+fn vec4_normalize(v) {
+    var l = vec4_length(v)
+    if l == 0.0 { return Vec4(0.0, 0.0, 0.0, 0.0) }
+    return Vec4(v.x / l, v.y / l, v.z / l, v.w / l)
+}
+fn vec4_distance(a, b) {
+    var dx = a.x - b.x
+    var dy = a.y - b.y
+    var dz = a.z - b.z
+    var dw = a.w - b.w
+    return sqrt(dx * dx + dy * dy + dz * dz + dw * dw)
+}
+
+// --- Standard GLSL Overloads ---
+
+fn dot2(a, b) { return vec2_dot(a, b) }
+fn dot3(a, b) { return vec3_dot(a, b) }
+fn dot4(a, b) { return vec4_dot(a, b) }
+
+fn cross(a, b) {
+    return vec3_cross(a, b)
+}
+
+// Reflect: I - 2.0 * dot(N, I) * N
+fn reflect(incident, normal) {
+    var d = 2.0 * vec3_dot(incident, normal)
+    return vec3_sub(incident, vec3_scale(normal, d))
+}
+
+// Refract: Snell's law
+fn refract(incident, normal, eta) {
+    var ndi = vec3_dot(normal, incident)
+    var k = 1.0 - eta * eta * (1.0 - ndi * ndi)
+    if k < 0.0 {
+        return Vec3(0.0, 0.0, 0.0)
+    }
+    var scale_n = eta * ndi + sqrt(k)
+    return vec3_sub(vec3_scale(incident, eta), vec3_scale(normal, scale_n))
+}
+
+// Faceforward: orient a normal to point away from a surface
+fn faceforward(n, i, nref) {
+    if vec3_dot(nref, i) < 0.0 {
+        return n
+    }
+    return vec3_neg(n)
+}
+
+// Component-wise vector clamp
+fn vec2_clamp(v, min_v, max_v) {
+    return Vec2(clamp(v.x, min_v, max_v), clamp(v.y, min_v, max_v))
+}
+
+fn vec3_clamp(v, min_v, max_v) {
+    return Vec3(clamp(v.x, min_v, max_v), clamp(v.y, min_v, max_v), clamp(v.z, min_v, max_v))
+}
+
+fn vec4_clamp(v, min_v, max_v) {
+    return Vec4(clamp(v.x, min_v, max_v), clamp(v.y, min_v, max_v), clamp(v.z, min_v, max_v), clamp(v.w, min_v, max_v))
+}
+
+// Component-wise vector mix (lerp)
+fn vec2_mix(a, b, t) {
+    return Vec2(mix(a.x, b.x, t), mix(a.y, b.y, t))
+}
+
+fn vec3_mix(a, b, t) {
+    return Vec3(mix(a.x, b.x, t), mix(a.y, b.y, t), mix(a.z, b.z, t))
+}
+
+fn vec4_mix(a, b, t) {
+    return Vec4(mix(a.x, b.x, t), mix(a.y, b.y, t), mix(a.z, b.z, t), mix(a.w, b.w, t))
+}

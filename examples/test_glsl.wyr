@@ -1,0 +1,172 @@
+// Test Suite for Pure Wyrm GLSL Library
+// Verifies vector math, matrix transformations, projections, and shader utilities
+
+use glsl;
+
+fn assert_true(cond, msg) {
+    if not cond {
+        print("ASSERTION FAILED: " + msg)
+        exit(1)
+    }
+}
+
+fn assert_approx(val, expected, eps, msg) {
+    var diff = abs(val - expected)
+    if diff > eps {
+        print("ASSERTION FAILED: " + msg + " (got " + str(val) + ", expected " + str(expected) + ", diff " + str(diff) + ")")
+        exit(1)
+    }
+}
+
+fn main() {
+    print("=== Testing Wyrm GLSL Library v1.0.0 ===")
+
+    // 1. Vector 2 Tests
+    print("\n[1] Testing Vec2 Operations...")
+    var v2_a = vec2(3.0, 4.0)
+    assert_approx(vec2_length(v2_a), 5.0, 0.0001, "vec2.length")
+    
+    var v2_norm = vec2_normalize(v2_a)
+    assert_approx(vec2_length(v2_norm), 1.0, 0.0001, "vec2.normalize length")
+    assert_approx(v2_norm.x, 0.6, 0.0001, "vec2_norm.x")
+    assert_approx(v2_norm.y, 0.8, 0.0001, "vec2_norm.y")
+
+    var v2_b = vec2(1.0, 2.0)
+    var v2_add_res = vec2_add(v2_a, v2_b)
+    assert_approx(v2_add_res.x, 4.0, 0.0001, "vec2_add.x")
+    assert_approx(v2_add_res.y, 6.0, 0.0001, "vec2_add.y")
+    assert_approx(vec2_dot(v2_a, v2_b), 11.0, 0.0001, "vec2_dot")
+    print("  ✓ Vec2 length, normalize, add, dot passed")
+
+    // 2. Vector 3 Tests
+    print("\n[2] Testing Vec3 Operations & Cross Product...")
+    var v3_right = vec3(1.0, 0.0, 0.0)
+    var v3_up = vec3(0.0, 1.0, 0.0)
+    var v3_forward = vec3_cross(v3_right, v3_up)
+    assert_approx(v3_forward.x, 0.0, 0.0001, "cross.x")
+    assert_approx(v3_forward.y, 0.0, 0.0001, "cross.y")
+    assert_approx(v3_forward.z, 1.0, 0.0001, "cross.z")
+    assert_approx(vec3_length(v3_forward), 1.0, 0.0001, "cross.length")
+
+    var v3_p0 = vec3(1.0, 2.0, 3.0)
+    var v3_p1 = vec3(4.0, 6.0, 3.0)
+    assert_approx(vec3_distance(v3_p0, v3_p1), 5.0, 0.0001, "vec3 distance")
+    print("  ✓ Vec3 cross product and distance passed")
+
+    // 3. Optics & Reflection Tests
+    print("\n[3] Testing GLSL Optics (reflect)...")
+    var incident = vec3(1.0, -1.0, 0.0)
+    var normal = vec3(0.0, 1.0, 0.0)
+    var reflected = reflect(incident, normal)
+    assert_approx(reflected.x, 1.0, 0.0001, "reflect.x")
+    assert_approx(reflected.y, 1.0, 0.0001, "reflect.y")
+    assert_approx(reflected.z, 0.0, 0.0001, "reflect.z")
+    print("  ✓ reflect passed")
+
+    // 4. Matrix 4x4 Identity and Transformations
+    print("\n[4] Testing Mat4 Identity, Translation & Scale...")
+    var id = mat4_identity()
+    var v4 = vec4(10.0, 20.0, 30.0, 1.0)
+    var v4_id = mat4_mul_vec4(id, v4)
+    assert_approx(v4_id.x, 10.0, 0.0001, "mat4_id.x")
+    assert_approx(v4_id.y, 20.0, 0.0001, "mat4_id.y")
+    assert_approx(v4_id.z, 30.0, 0.0001, "mat4_id.z")
+    assert_approx(v4_id.w, 1.0, 0.0001, "mat4_id.w")
+
+    var trans = mat4_translate(5.0, -3.0, 2.0)
+    var v4_trans = mat4_mul_vec4(trans, v4)
+    assert_approx(v4_trans.x, 15.0, 0.0001, "trans.x")
+    assert_approx(v4_trans.y, 17.0, 0.0001, "trans.y")
+    assert_approx(v4_trans.z, 32.0, 0.0001, "trans.z")
+    assert_approx(v4_trans.w, 1.0, 0.0001, "trans.w")
+
+    var scale_m = mat4_scale(2.0, 3.0, 4.0)
+    var v4_scale = mat4_mul_vec4(scale_m, v4)
+    assert_approx(v4_scale.x, 20.0, 0.0001, "scale.x")
+    assert_approx(v4_scale.y, 60.0, 0.0001, "scale.y")
+    assert_approx(v4_scale.z, 120.0, 0.0001, "scale.z")
+    print("  ✓ Mat4 identity, translation, scale passed")
+
+    // 5. Matrix Rotation (Z-axis 90 degrees)
+    print("\n[5] Testing Mat4 Rotation...")
+    var rot_z = mat4_rotate_z(radians(90.0))
+    var v_x = vec4(1.0, 0.0, 0.0, 1.0)
+    var v_rot = mat4_mul_vec4(rot_z, v_x)
+    assert_approx(v_rot.x, 0.0, 0.0001, "rot_z.x")
+    assert_approx(v_rot.y, 1.0, 0.0001, "rot_z.y")
+    print("  ✓ Mat4 rotation passed")
+
+    // 6. Matrix Inversion (M * M^-1 == Identity)
+    print("\n[6] Testing Mat4 Inversion (M * M^-1)...")
+    var model_m = mat4_mul(trans, scale_m)
+    var inv_m = mat4_inverse(model_m)
+    var check_m = mat4_mul(model_m, inv_m)
+
+    assert_approx(check_m.m00, 1.0, 0.0001, "inv check m00")
+    assert_approx(check_m.m11, 1.0, 0.0001, "inv check m11")
+    assert_approx(check_m.m22, 1.0, 0.0001, "inv check m22")
+    assert_approx(check_m.m33, 1.0, 0.0001, "inv check m33")
+    assert_approx(check_m.m03, 0.0, 0.0001, "inv check m03")
+    assert_approx(check_m.m13, 0.0, 0.0001, "inv check m13")
+    assert_approx(check_m.m23, 0.0, 0.0001, "inv check m23")
+
+    // Verify round-trip point transformation
+    var pt = vec4(7.0, 11.0, 13.0, 1.0)
+    var pt_transformed = mat4_mul_vec4(model_m, pt)
+    var pt_recovered = mat4_mul_vec4(inv_m, pt_transformed)
+    assert_approx(pt_recovered.x, pt.x, 0.0001, "recover.x")
+    assert_approx(pt_recovered.y, pt.y, 0.0001, "recover.y")
+    assert_approx(pt_recovered.z, pt.z, 0.0001, "recover.z")
+    print("  ✓ Mat4 inverse and round-trip transformation passed")
+
+    // 7. Camera LookAt and Perspective Projection
+    print("\n[7] Testing Camera LookAt & Perspective Projection...")
+    var eye = vec3(0.0, 0.0, 5.0)
+    var target = vec3(0.0, 0.0, 0.0)
+    var up = vec3(0.0, 1.0, 0.0)
+    var view = mat4_look_at(eye, target, up)
+    var proj = mat4_perspective(radians(60.0), 16.0 / 9.0, 0.1, 100.0)
+    var vp = mat4_mul(proj, view)
+
+    // Center point in view coordinates should have x=0, y=0
+    var origin = vec4(0.0, 0.0, 0.0, 1.0)
+    var clip = mat4_mul_vec4(vp, origin)
+    assert_approx(clip.x, 0.0, 0.0001, "clip.x")
+    assert_approx(clip.y, 0.0, 0.0001, "clip.y")
+    assert_true(clip.w > 0.0, "clip.w > 0")
+    print("  ✓ Camera LookAt and Perspective Projection passed")
+
+    // 8. GLSL Math Functions (clamp, mix, smoothstep, fract)
+    print("\n[8] Testing GLSL Math Functions...")
+    assert_approx(clamp(15.0, 0.0, 10.0), 10.0, 0.0001, "clamp upper")
+    assert_approx(clamp(-5.0, 0.0, 10.0), 0.0, 0.0001, "clamp lower")
+    assert_approx(mix(10.0, 20.0, 0.25), 12.5, 0.0001, "mix")
+    assert_approx(smoothstep(0.0, 1.0, 0.5), 0.5, 0.0001, "smoothstep mid")
+    assert_approx(smoothstep(0.0, 1.0, 0.0), 0.0, 0.0001, "smoothstep min")
+    assert_approx(smoothstep(0.0, 1.0, 1.0), 1.0, 0.0001, "smoothstep max")
+    assert_approx(fract(3.75), 0.75, 0.0001, "fract")
+    print("  ✓ clamp, mix, smoothstep, fract passed")
+
+    // 9. Shader Pipeline & std140 Buffer Layout
+    print("\n[9] Testing Shader Pipeline & std140 Buffer Layout...")
+    var v_stage = shader_create_vertex("void main() { gl_Position = vec4(0.0); }")
+    var f_stage = shader_create_fragment("out vec4 FragColor; void main() { FragColor = vec4(1.0); }")
+    var prog = shader_program(v_stage, f_stage)
+    var vs = prog.vertex_stage
+    var fs = prog.fragment_stage
+    assert_true(vs.stage_type == SHADER_STAGE_VERTEX, "vertex stage type")
+    assert_true(fs.stage_type == SHADER_STAGE_FRAGMENT, "fragment stage type")
+
+    var prep = shader_preprocess("void main() {}", [["DEBUG", "1"]], "330 core")
+    assert_true(contains(prep, "#version 330 core"), "preprocessor #version")
+    assert_true(contains(prep, "#define DEBUG 1"), "preprocessor #define")
+
+    assert_true(std140_size_float() == 4, "std140 float size")
+    assert_true(std140_size_vec2() == 8, "std140 vec2 size")
+    assert_true(std140_size_vec3() == 16, "std140 vec3 alignment/size")
+    assert_true(std140_size_mat4() == 64, "std140 mat4 size")
+    assert_true(std140_align_offset(4, 16) == 16, "std140 align offset")
+    print("  ✓ Shader Pipeline and std140 buffer layout passed")
+
+    print("\n=== ALL GLSL TESTS PASSED SUCCESSFULLY! ===")
+}

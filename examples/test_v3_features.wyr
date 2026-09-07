@@ -1,0 +1,22 @@
+struct Point {
+    x: i32,
+    y: i32
+}
+
+fn add_points(px: i32, py: i32): i32 {
+    return px + py
+}
+
+fn main() {
+    var p = Point(15, 25)
+    print("Point x:", p.x, "y:", p.y)
+
+    var total: i32 = add_points(p.x, p.y)
+    print("Point sum:", total)
+
+    var i: i32 = 0
+    do {
+        i = i + 1
+    } til i >= 5
+    print("Do-til finished at i =", i)
+}

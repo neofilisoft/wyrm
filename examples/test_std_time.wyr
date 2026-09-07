@@ -1,0 +1,67 @@
+// test_std_time.wyr - Comprehensive test suite for std.time module in Wyrm v3.2.1
+
+use std.time;
+
+fn assert(condition, message) {
+    if not condition {
+        print("ASSERTION FAILED: " + message)
+        exit(1)
+    }
+}
+
+fn main() {
+    print("=== Testing std.time Module in Wyrm v3.2.1 ===")
+
+    // 1. Test Wall-Clock Timestamps
+    var now_sec = time_now()
+    print("[1] time_now(): " + str(now_sec))
+    assert(now_sec > 1700000000.0, "time_now() should be greater than 1.7e9")
+
+    var unix_sec = time_unix()
+    print("[2] time_unix(): " + str(unix_sec))
+    assert(unix_sec >= 1700000000, "time_unix() should be greater than or equal to 1700000000")
+
+    var unix_ms = time_unix_ms()
+    print("[3] time_unix_ms(): " + str(unix_ms))
+    assert(unix_ms > 1700000000000.0, "time_unix_ms() should be greater than 1.7e12")
+
+    // 2. Test High-Resolution Monotonic Clocks
+    var m_sec1 = time_monotonic()
+    var m_ms1 = time_monotonic_ms()
+    var m_ns1 = time_monotonic_ns()
+    print("[4] Monotonic timers: " + str(m_sec1) + " s | " + str(m_ms1) + " ms | " + str(m_ns1) + " ns")
+    assert(m_sec1 >= 0.0, "m_sec1 should be non-negative")
+    assert(m_ms1 >= 0.0, "m_ms1 should be non-negative")
+    assert(m_ns1 >= 0.0, "m_ns1 should be non-negative")
+
+    // 3. Test Sleep and Monotonic Delta
+    print("[5] Testing time_sleep(50 ms)...")
+    var start_ms = time_monotonic_ms()
+    time_sleep(50)
+    var end_ms = time_monotonic_ms()
+    var delta_ms = end_ms - start_ms
+    print("    Elapsed sleep time: " + str(delta_ms) + " ms")
+    assert(delta_ms >= 35.0, "Sleep of 50ms should measure at least 35ms on monotonic clock")
+
+    // 4. Test time_diff utility
+    var diff_result = time_diff(start_ms, end_ms)
+    print("[6] time_diff: " + str(diff_result) + " ms")
+    assert(diff_result == delta_ms, "time_diff should equal end - start")
+
+    // 5. Test Date Formatting
+    var date_str = time_format(unix_sec, "%Y-%m-%d")
+    print("[7] Formatted UTC Date (%Y-%m-%d): " + date_str)
+    assert(len(date_str) == 10, "Formatted date '%Y-%m-%d' should have length 10")
+    assert(char_at(date_str, 4) == "-", "Expected '-' at index 4")
+    assert(char_at(date_str, 7) == "-", "Expected '-' at index 7")
+
+    var local_date_str = time_format_local(unix_sec, "%Y-%m-%d %H:%M:%S")
+    print("[8] Formatted Local Date/Time: " + local_date_str)
+    assert(len(local_date_str) == 19, "Formatted local datetime should have length 19")
+
+    var default_fmt_str = time_format(unix_sec, null)
+    print("[9] Default Format (null fmt): " + default_fmt_str)
+    assert(len(default_fmt_str) == 19, "Default formatted string should have length 19")
+
+    print("=== All std.time tests passed successfully! ===")
+}
