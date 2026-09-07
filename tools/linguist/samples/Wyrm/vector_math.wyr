@@ -1,0 +1,55 @@
+// Real-world Wyrm 3D Vector and Transformation Pipeline
+// Used for graphics computation and game physics in the Wyrm Programming Language
+
+struct Vec3 {
+    x, y, z
+}
+
+struct Mat4 {
+    m00, m10, m20, m30,
+    m01, m11, m21, m31,
+    m02, m12, m22, m32,
+    m03, m13, m23, m33
+}
+
+fn vec3(x, y, z) {
+    return Vec3(float(x), float(y), float(z))
+}
+
+fn vec3_dot(a, b) {
+    return a.x * b.x + a.y * b.y + a.z * b.z
+}
+
+fn vec3_cross(a, b) {
+    return Vec3(
+        a.y * b.z - a.z * b.y,
+        a.z * b.x - a.x * b.z,
+        a.x * b.y - a.y * b.x
+    )
+}
+
+fn vec3_length_sq(v) {
+    return vec3_dot(v, v)
+}
+
+fn vec3_length(v) {
+    return sqrt(vec3_length_sq(v))
+}
+
+fn vec3_normalize(v) {
+    var len = vec3_length(v)
+    if len <= 0.000001 {
+        return Vec3(0.0, 0.0, 0.0)
+    }
+    var inv = 1.0 / len
+    return Vec3(v.x * inv, v.y * inv, v.z * inv)
+}
+
+fn reflect(incident, normal) {
+    var d = 2.0 * vec3_dot(incident, normal)
+    return Vec3(
+        incident.x - d * normal.x,
+        incident.y - d * normal.y,
+        incident.z - d * normal.z
+    )
+}

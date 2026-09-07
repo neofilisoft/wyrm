@@ -12,7 +12,7 @@
 #include "../../compiler/transpiler/transpiler.hpp"
 
 #ifndef WYRMC_VERSION
-#define WYRMC_VERSION "3.2.0"
+#define WYRMC_VERSION "1.0.0"
 #endif
 
 using namespace wyrm;
@@ -120,7 +120,7 @@ int run_native_compiler(const std::string& filename) {
         return 1;
     }
 
-    std::cout << "[wyrmc Compiler v" << WYRMC_VERSION << "] Successfully compiled '" << filename << "' -> Native Binary '" << output_exe << "'" << std::endl;
+    std::cout << "[wyrmc " << WYRMC_VERSION << "] Successfully compiled '" << filename << "' -> Native Binary '" << output_exe << "'" << std::endl;
     return 0;
 }
 
@@ -128,11 +128,11 @@ int main(int argc, char* argv[]) {
     if (argc > 1) {
         std::string arg1 = argv[1];
         if (arg1 == "--version" || arg1 == "-v" || arg1 == "version") {
-            std::cout << "wyrmc version " << WYRMC_VERSION << " (Wyrm Compiler & LLVM)" << std::endl;
+            std::cout << "wyrmc " << WYRMC_VERSION << std::endl;
             return 0;
         }
         if (arg1 == "--help" || arg1 == "-h" || arg1 == "help") {
-            std::cout << "Wyrm Compiler & VM (wyrmc) v" << WYRMC_VERSION << "\n\n"
+            std::cout << "wyrmc " << WYRMC_VERSION << "\n\n"
                       << "Usage:\n"
                       << "  wyrmc [command] <file.wyr>\n\n"
                       << "Commands:\n"
@@ -170,7 +170,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    std::cout << "wyrmc version " << WYRMC_VERSION << " (Wyrm Compiler & LLVM)\n"
+    std::cout << "wyrmc " << WYRMC_VERSION << "\n"
               << "Use 'wyrmc --help' for usage." << std::endl;
     return 0;
 }

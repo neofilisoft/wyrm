@@ -1,0 +1,51 @@
+// Entity Component Simulation in Wyrm
+// Demonstrates structs, control flow, loops, and memory ownership
+
+struct Entity {
+    id,
+    active,
+    pos_x,
+    pos_y,
+    vel_x,
+    vel_y
+}
+
+fn create_entity(id, px, py, vx, vy) {
+    return Entity(id, true, float(px), float(py), float(vx), float(vy))
+}
+
+fn update_physics(entities, dt, gravity) {
+    var i = 0
+    var count = len(entities)
+    do {
+        if i >= count { break }
+        var e = entities[i]
+        if e.active {
+            e.vel_y = e.vel_y + gravity * dt
+            e.pos_x = e.pos_x + e.vel_x * dt
+            e.pos_y = e.pos_y + e.vel_y * dt
+            
+            // Ground bounce
+            if e.pos_y <= 0.0 {
+                e.pos_y = 0.0
+                e.vel_y = -e.vel_y * 0.75
+            }
+        }
+        i = i + 1
+    } til i >= count
+}
+
+fn count_active(entities) {
+    var active_count = 0
+    var i = 0
+    var total = len(entities)
+    do {
+        if i >= total { break }
+        var e = entities[i]
+        if e.active {
+            active_count = active_count + 1
+        }
+        i = i + 1
+    } til i >= total
+    return active_count
+}

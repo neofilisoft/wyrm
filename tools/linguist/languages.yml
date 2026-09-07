@@ -1,0 +1,10 @@
+Wyrm:
+  type: programming
+  color: "#6f3799"
+  extensions:
+    - ".wyr"
+  tm_scope: source.wyrm
+  ace_mode: text
+  codemirror_mode: clike
+  codemirror_mime_type: text/x-wyrm
+  language_id: 87463920

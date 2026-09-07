@@ -17,7 +17,8 @@ typedef enum {
     VAL_ARRAY,
     VAL_STRUCT,
     VAL_RAW_PTR,
-    VAL_ERROR
+    VAL_ERROR,
+    VAL_WEAK_REF
 } ValueType;
 
 struct Value;
@@ -36,6 +37,7 @@ typedef struct WyrmStruct {
     char **field_names;
     struct Value *fields;
     int ref_count;
+    int weak_count;
 } WyrmStruct;
 
 typedef struct Value {
@@ -106,6 +108,8 @@ Value val_array_slice(Value arr, Value start, Value end);
 Value val_struct_create(const char *type_name, int field_count, const char **field_names, const Value *initial_fields);
 Value val_struct_get(Value s, const char *field_name);
 Value val_struct_set(Value s, const char *field_name, Value new_val);
+Value val_weak_ref(Value st);
+Value val_weak_lock(Value w);
 
 // Raw memory safety operations
 Value val_raw_malloc(Value size);
@@ -277,5 +281,19 @@ void llvm_val_rand_has_trng(Value *res);
 void llvm_val_rand_trng(Value *res);
 void llvm_val_rand_trng_int(Value *res, Value *min, Value *max);
 void llvm_val_rand_reseed_trng(Value *res);
+
+void llvm_val_time_now(Value *res);
+void llvm_val_time_unix(Value *res);
+void llvm_val_time_unix_ms(Value *res);
+void llvm_val_time_monotonic(Value *res);
+void llvm_val_time_monotonic_ms(Value *res);
+void llvm_val_time_monotonic_ns(Value *res);
+void llvm_val_time_sleep(Value *res, Value *ms);
+void llvm_val_time_diff(Value *res, Value *start, Value *end);
+void llvm_val_time_format(Value *res, Value *ts, Value *fmt);
+void llvm_val_time_format_local(Value *res, Value *ts, Value *fmt);
+
+void llvm_val_weak_ref(Value *res, Value *st);
+void llvm_val_weak_lock(Value *res, Value *w);
 
 #endif // WYRM_CORE_H

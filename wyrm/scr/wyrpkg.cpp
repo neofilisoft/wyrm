@@ -1,5 +1,6 @@
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 #include <filesystem>
@@ -9,7 +10,7 @@
 namespace fs = std::filesystem;
 
 #ifndef WYRPKG_VERSION
-#define WYRPKG_VERSION "3.2.0"
+#define WYRPKG_VERSION "1.0.0"
 #endif
 
 fs::path get_install_dir() {
@@ -29,28 +30,29 @@ std::map<std::string, std::string> read_lock_file(const fs::path& path) {
     std::map<std::string, std::string> packages;
     if (!fs::exists(path)) return packages;
     std::ifstream file(path);
-    std::string line;
-    while (std::getline(file, line)) {
-        size_t colon = line.find(':');
-        if (colon == std::string::npos) continue;
-        
-        std::string key = line.substr(0, colon);
-        std::string value = line.substr(colon + 1);
-        
-        auto clean = [](std::string& s) {
-            std::string res;
-            for (char c : s) {
-                if (c != '"' && c != ',' && c != ' ' && c != '\t' && c != '{' && c != '}') {
-                    res += c;
-                }
-            }
-            s = res;
-        };
-        clean(key);
-        clean(value);
-        if (!key.empty() && !value.empty()) {
-            packages[key] = value;
-        }
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    std::string content = buffer.str();
+
+    size_t i = 0;
+    while (i < content.size()) {
+        size_t k_start = content.find('"', i);
+        if (k_start == std::string::npos) break;
+        size_t k_end = content.find('"', k_start + 1);
+        if (k_end == std::string::npos) break;
+        std::string key = content.substr(k_start + 1, k_end - k_start - 1);
+
+        size_t colon = content.find(':', k_end + 1);
+        if (colon == std::string::npos) break;
+
+        size_t v_start = content.find('"', colon + 1);
+        if (v_start == std::string::npos) break;
+        size_t v_end = content.find('"', v_start + 1);
+        if (v_end == std::string::npos) break;
+        std::string val = content.substr(v_start + 1, v_end - v_start - 1);
+
+        packages[key] = val;
+        i = v_end + 1;
     }
     return packages;
 }
@@ -70,19 +72,110 @@ void write_lock_file(const fs::path& path, const std::map<std::string, std::stri
     file << "}\n";
 }
 
+struct ProjectManifest {
+    std::string name;
+    std::string version;
+    std::string entry = "main.wyr";
+    std::map<std::string, std::string> dependencies;
+    bool found = false;
+    std::string file_path;
+};
+
+static inline std::string trim_str(const std::string& str) {
+    size_t first = str.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) return "";
+    size_t last = str.find_last_not_of(" \t\r\n");
+    return str.substr(first, (last - first + 1));
+}
+
+static inline std::string strip_quotes(const std::string& str) {
+    std::string s = trim_str(str);
+    if (s.size() >= 2 && ((s.front() == '"' && s.back() == '"') || (s.front() == '\'' && s.back() == '\''))) {
+        return s.substr(1, s.size() - 2);
+    }
+    return s;
+}
+
+ProjectManifest read_toml_manifest(const fs::path& path) {
+    ProjectManifest manifest;
+    if (!fs::exists(path)) return manifest;
+    std::ifstream file(path);
+    std::string line;
+    std::string current_section = "";
+    manifest.found = true;
+    manifest.file_path = path.string();
+
+    while (std::getline(file, line)) {
+        size_t comment_pos = line.find('#');
+        if (comment_pos != std::string::npos) {
+            line = line.substr(0, comment_pos);
+        }
+        line = trim_str(line);
+        if (line.empty()) continue;
+
+        if (line.front() == '[' && line.back() == ']') {
+            current_section = trim_str(line.substr(1, line.size() - 2));
+            continue;
+        }
+
+        size_t eq_pos = line.find('=');
+        if (eq_pos == std::string::npos) continue;
+
+        std::string key = trim_str(line.substr(0, eq_pos));
+        std::string val = strip_quotes(line.substr(eq_pos + 1));
+
+        if (current_section == "package" || current_section.empty()) {
+            if (key == "name") manifest.name = val;
+            else if (key == "version") manifest.version = val;
+            else if (key == "entry") manifest.entry = val;
+        } else if (current_section == "dependencies") {
+            if (!key.empty()) {
+                manifest.dependencies[key] = val;
+            }
+        }
+    }
+    return manifest;
+}
+
+ProjectManifest read_project_manifest() {
+    if (fs::exists("wyrpkg.toml")) {
+        return read_toml_manifest("wyrpkg.toml");
+    }
+    if (fs::exists("wyrproj.json")) {
+        ProjectManifest manifest;
+        auto config = read_lock_file("wyrproj.json");
+        manifest.found = true;
+        manifest.file_path = "wyrproj.json";
+        if (config.count("name")) manifest.name = config["name"];
+        if (config.count("version")) manifest.version = config["version"];
+        if (config.count("entry")) manifest.entry = config["entry"];
+        return manifest;
+    }
+    return ProjectManifest{};
+}
+
+void write_toml_manifest(const fs::path& path, const std::string& name, const std::string& version, const std::string& entry) {
+    std::ofstream file(path);
+    file << "[package]\n";
+    file << "name = \"" << name << "\"\n";
+    file << "version = \"" << version << "\"\n";
+    file << "entry = \"" << entry << "\"\n\n";
+    file << "[dependencies]\n";
+}
+
 void show_help() {
-    std::cout << "wyrpkg v" << WYRPKG_VERSION << " - Wyrm Package Manager\n\n"
+    std::cout << "wyrpkg " << WYRPKG_VERSION << " - Wyrm Package Manager\n\n"
               << "Usage:\n"
               << "  wyrpkg <command> [options]\n\n"
               << "Commands:\n"
-              << "  new <name>                    Create a new Wyrm project in a new directory\n"
-              << "  init                          Initialize a Wyrm project in the current directory\n"
+              << "  new <name>                    Create a new Wyrm project with wyrpkg.toml\n"
+              << "  init                          Initialize a Wyrm project (wyrpkg.toml) in current directory\n"
               << "  build                         Build the current project using wyrmc\n"
               << "  run                           Build and run the current project\n"
               << "  install <pkg|url|owner/repo>  Install a package from Git, GitHub, or local directory\n"
               << "  update <package>              Update an installed Git package to latest version\n"
               << "  publish                       Validate and prepare package for public distribution\n"
-              << "  remove <package>              Remove an installed package\n"
+              << "  remove, uninstall <package>   Remove or uninstall an installed package\n"
               << "  list                          List installed packages\n"
               << "  version, --version            Show version\n"
               << "  help, --help                  Show help message\n";
@@ -100,7 +193,7 @@ int main(int argc, char* argv[]) {
     fs::path lock_file = install_dir / "wyrpkg.lock";
 
     if (cmd == "--version" || cmd == "-v" || cmd == "version") {
-        std::cout << "wyrpkg v" << WYRPKG_VERSION << std::endl;
+        std::cout << "wyrpkg " << WYRPKG_VERSION << std::endl;
         return 0;
     }
 
@@ -126,11 +219,9 @@ int main(int argc, char* argv[]) {
         main_file << "fn main() {\n    print(\"Hello from " << proj_name << "!\")\n}\n";
         main_file.close();
 
-        std::ofstream config(proj_path / "wyrproj.json");
-        config << "{\n  \"name\": \"" << proj_name << "\",\n  \"version\": \"0.1.0\",\n  \"entry\": \"main.wyr\"\n}\n";
-        config.close();
+        write_toml_manifest(proj_path / "wyrpkg.toml", proj_name, "0.1.0", "main.wyr");
 
-        std::cout << "Created project '" << proj_name << "' successfully." << std::endl;
+        std::cout << "Created project '" << proj_name << "' with wyrpkg.toml successfully." << std::endl;
         return 0;
     }
 
@@ -141,22 +232,18 @@ int main(int argc, char* argv[]) {
             main_file << "fn main() {\n    print(\"Hello from " << proj_name << "!\")\n}\n";
             main_file.close();
         }
-        if (!fs::exists("wyrproj.json")) {
-            std::ofstream config("wyrproj.json");
-            config << "{\n  \"name\": \"" << proj_name << "\",\n  \"version\": \"0.1.0\",\n  \"entry\": \"main.wyr\"\n}\n";
-            config.close();
+        if (!fs::exists("wyrpkg.toml") && !fs::exists("wyrproj.json")) {
+            write_toml_manifest("wyrpkg.toml", proj_name, "0.1.0", "main.wyr");
         }
-        std::cout << "Initialized Wyrm project in current directory." << std::endl;
+        std::cout << "Initialized Wyrm project (wyrpkg.toml) in current directory." << std::endl;
         return 0;
     }
 
     if (cmd == "build") {
         std::string entry = "main.wyr";
-        if (fs::exists("wyrproj.json")) {
-            auto config = read_lock_file("wyrproj.json");
-            if (config.count("entry")) {
-                entry = config["entry"];
-            }
+        auto manifest = read_project_manifest();
+        if (manifest.found && !manifest.entry.empty()) {
+            entry = manifest.entry;
         }
         if (!fs::exists(entry)) {
             std::cerr << "Error: Entry file '" << entry << "' not found." << std::endl;
@@ -174,15 +261,9 @@ int main(int argc, char* argv[]) {
 
     if (cmd == "run") {
         std::string entry = "main.wyr";
-        std::string proj_name = "main";
-        if (fs::exists("wyrproj.json")) {
-            auto config = read_lock_file("wyrproj.json");
-            if (config.count("entry")) {
-                entry = config["entry"];
-            }
-            if (config.count("name")) {
-                proj_name = config["name"];
-            }
+        auto manifest = read_project_manifest();
+        if (manifest.found && !manifest.entry.empty()) {
+            entry = manifest.entry;
         }
         if (!fs::exists(entry)) {
             std::cerr << "Error: Entry file '" << entry << "' not found." << std::endl;
@@ -326,18 +407,18 @@ int main(int argc, char* argv[]) {
             return 0;
         }
     } else if (cmd == "publish") {
-        if (!fs::exists("wyrproj.json")) {
-            std::cerr << "Error: No 'wyrproj.json' found in the current directory. Run 'wyrpkg init' first." << std::endl;
+        auto manifest = read_project_manifest();
+        if (!manifest.found) {
+            std::cerr << "Error: No 'wyrpkg.toml' found in the current directory. Run 'wyrpkg init' first." << std::endl;
             return 1;
         }
 
-        auto config = read_lock_file("wyrproj.json");
-        std::string name = config.count("name") ? config["name"] : "";
-        std::string ver = config.count("version") ? config["version"] : "";
-        std::string entry = config.count("entry") ? config["entry"] : "main.wyr";
+        std::string name = manifest.name;
+        std::string ver = manifest.version;
+        std::string entry = manifest.entry.empty() ? "main.wyr" : manifest.entry;
 
         if (name.empty() || ver.empty()) {
-            std::cerr << "Error: 'wyrproj.json' must specify both 'name' and 'version'." << std::endl;
+            std::cerr << "Error: '" << manifest.file_path << "' must specify both 'name' and 'version'." << std::endl;
             return 1;
         }
 

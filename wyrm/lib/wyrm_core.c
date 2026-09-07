@@ -7,6 +7,7 @@
 #include "stdlib/wyrm_std_sdl.h"
 #include "stdlib/wyrm_std_collections.h"
 #include "stdlib/wyrm_std_random.h"
+#include "stdlib/wyrm_std_time.h"
 
 void wyrm_check_oom(void *ptr, const char *context) {
     if (!ptr) {
@@ -104,6 +105,8 @@ bool val_to_bool(Value v) {
         case VAL_NUMBER: return v.as.number != 0.0;
         case VAL_STRING: return strlen(v.as.string) > 0;
         case VAL_ARRAY: return v.as.array->size > 0;
+        case VAL_STRUCT: return v.as.structure != NULL && v.as.structure->ref_count > 0;
+        case VAL_WEAK_REF: return v.as.structure != NULL && v.as.structure->ref_count > 0 && v.as.structure->fields != NULL;
         case VAL_RAW_PTR: return v.as.raw_ptr != NULL;
         case VAL_ERROR: return false;
     }
@@ -115,6 +118,14 @@ char* val_to_str_ptr(Value v) {
     switch (v.type) {
         case VAL_NULL: return strdup("null");
         case VAL_BOOL: return strdup(v.as.boolean ? "true" : "false");
+        case VAL_WEAK_REF: {
+            if (!v.as.structure || v.as.structure->ref_count <= 0 || !v.as.structure->fields) {
+                return strdup("<weak null>");
+            }
+            char wbuf[128];
+            snprintf(wbuf, sizeof(wbuf), "<weak %s at %p>", v.as.structure->type_name ? v.as.structure->type_name : "Struct", (void*)v.as.structure);
+            return strdup(wbuf);
+        }
         case VAL_RAW_PTR: {
             char ptrbuf[64];
             snprintf(ptrbuf, sizeof(ptrbuf), "<raw_ptr %p>", v.as.raw_ptr);
@@ -231,6 +242,8 @@ Value val_type(Value v) {
         case VAL_NUMBER: return val_string("number");
         case VAL_STRING: return val_string("string");
         case VAL_ARRAY: return val_string("array");
+        case VAL_STRUCT: return val_string("struct");
+        case VAL_WEAK_REF: return val_string("weak_ref");
         case VAL_RAW_PTR: return val_string("raw_ptr");
         case VAL_ERROR: return val_string("error");
     }
@@ -383,6 +396,20 @@ Value val_mod(Value a, Value b) {
 }
 
 Value val_eq(Value a, Value b) {
+    if (a.type == VAL_WEAK_REF && b.type == VAL_NULL) {
+        bool is_dead = (!a.as.structure || a.as.structure->ref_count <= 0 || !a.as.structure->fields);
+        return val_bool(is_dead);
+    }
+    if (a.type == VAL_NULL && b.type == VAL_WEAK_REF) {
+        bool is_dead = (!b.as.structure || b.as.structure->ref_count <= 0 || !b.as.structure->fields);
+        return val_bool(is_dead);
+    }
+    if (a.type == VAL_WEAK_REF && b.type == VAL_STRUCT) {
+        return val_bool(a.as.structure == b.as.structure && a.as.structure && a.as.structure->ref_count > 0 && a.as.structure->fields != NULL);
+    }
+    if (a.type == VAL_STRUCT && b.type == VAL_WEAK_REF) {
+        return val_bool(a.as.structure == b.as.structure && a.as.structure && a.as.structure->ref_count > 0 && a.as.structure->fields != NULL);
+    }
     if (a.type != b.type) return val_bool(false);
     switch (a.type) {
         case VAL_NULL: return val_bool(true);
@@ -390,6 +417,8 @@ Value val_eq(Value a, Value b) {
         case VAL_NUMBER: return val_bool(a.as.number == b.as.number);
         case VAL_STRING: return val_bool(strcmp(a.as.string, b.as.string) == 0);
         case VAL_ARRAY: return val_bool(a.as.array == b.as.array);
+        case VAL_STRUCT: return val_bool(a.as.structure == b.as.structure);
+        case VAL_WEAK_REF: return val_bool(a.as.structure == b.as.structure);
         case VAL_RAW_PTR: return val_bool(a.as.raw_ptr == b.as.raw_ptr);
         case VAL_ERROR: return val_bool(strcmp(a.as.string, b.as.string) == 0);
     }
@@ -605,16 +634,31 @@ void val_drop(Value v) {
                             val_drop(st->fields[i]);
                         }
                         free(st->fields);
+                        st->fields = NULL;
                     }
                     if (st->field_names) {
                         for (int i = 0; i < st->field_count; i++) {
                             if (st->field_names[i]) free(st->field_names[i]);
                         }
                         free(st->field_names);
+                        st->field_names = NULL;
                     }
                     if (st->type_name) {
                         free(st->type_name);
+                        st->type_name = NULL;
                     }
+                    st->field_count = 0;
+                    if (st->weak_count <= 0) {
+                        free(st);
+                    }
+                }
+            }
+            break;
+        case VAL_WEAK_REF:
+            if (v.as.structure) {
+                WyrmStruct *st = v.as.structure;
+                st->weak_count--;
+                if (st->weak_count <= 0 && st->ref_count <= 0) {
                     free(st);
                 }
             }
@@ -651,6 +695,11 @@ Value val_copy(Value v) {
             v.as.structure->ref_count++;
             return v;
         }
+        case VAL_WEAK_REF: {
+            if (!v.as.structure) return val_null();
+            v.as.structure->weak_count++;
+            return v;
+        }
         case VAL_NULL:
         case VAL_BOOL:
         case VAL_NUMBER:
@@ -670,6 +719,7 @@ Value val_struct_create(const char *type_name, int field_count, const char **fie
     wyrm_check_oom(s->type_name, "val_struct_create (type_name)");
     s->field_count = field_count;
     s->ref_count = 1;
+    s->weak_count = 0;
     if (field_count > 0) {
         s->field_names = (char **)malloc(sizeof(char *) * (size_t)field_count);
         wyrm_check_oom(s->field_names, "val_struct_create (field_names)");
@@ -691,10 +741,22 @@ Value val_struct_create(const char *type_name, int field_count, const char **fie
 }
 
 Value val_struct_get(Value s, const char *field_name) {
+    if (s.type == VAL_WEAK_REF) {
+        Value locked = val_weak_lock(s);
+        if (locked.type == VAL_NULL) {
+            return val_null();
+        }
+        Value res = val_struct_get(locked, field_name);
+        val_drop(locked);
+        return res;
+    }
     if (s.type != VAL_STRUCT || !s.as.structure || !field_name) {
         return val_null();
     }
     WyrmStruct *st = s.as.structure;
+    if (st->ref_count <= 0 || !st->fields) {
+        return val_null();
+    }
     for (int i = 0; i < st->field_count; i++) {
         if (st->field_names[i] && strcmp(st->field_names[i], field_name) == 0) {
             return val_copy(st->fields[i]);
@@ -704,10 +766,21 @@ Value val_struct_get(Value s, const char *field_name) {
 }
 
 Value val_struct_set(Value s, const char *field_name, Value new_val) {
+    if (s.type == VAL_WEAK_REF) {
+        Value locked = val_weak_lock(s);
+        if (locked.type != VAL_NULL) {
+            val_struct_set(locked, field_name, new_val);
+            val_drop(locked);
+        }
+        return s;
+    }
     if (s.type != VAL_STRUCT || !s.as.structure || !field_name) {
         return s;
     }
     WyrmStruct *st = s.as.structure;
+    if (st->ref_count <= 0 || !st->fields) {
+        return s;
+    }
     for (int i = 0; i < st->field_count; i++) {
         if (st->field_names[i] && strcmp(st->field_names[i], field_name) == 0) {
             val_drop(st->fields[i]);
@@ -725,6 +798,37 @@ Value val_struct_set(Value s, const char *field_name, Value new_val) {
         }
     }
     return s;
+}
+
+// -------------------------------------------------------------------------
+// Weak Reference Operations
+// -------------------------------------------------------------------------
+Value val_weak_ref(Value st) {
+    if (st.type == VAL_WEAK_REF) {
+        return val_copy(st);
+    }
+    if (st.type != VAL_STRUCT || !st.as.structure) {
+        return val_null();
+    }
+    st.as.structure->weak_count++;
+    Value w;
+    w.type = VAL_WEAK_REF;
+    w.as.structure = st.as.structure;
+    return w;
+}
+
+Value val_weak_lock(Value w) {
+    if (w.type == VAL_STRUCT) {
+        return val_copy(w);
+    }
+    if (w.type != VAL_WEAK_REF || !w.as.structure || w.as.structure->ref_count <= 0 || !w.as.structure->fields) {
+        return val_null();
+    }
+    w.as.structure->ref_count++;
+    Value res;
+    res.type = VAL_STRUCT;
+    res.as.structure = w.as.structure;
+    return res;
 }
 
 Value val_floordiv(Value a, Value b) {
@@ -1046,6 +1150,14 @@ void llvm_val_struct_set(Value *s, const char *field_name, Value *val) {
     *s = val_struct_set(*s, field_name, *val);
 }
 
+void llvm_val_weak_ref(Value *res, Value *st) {
+    *res = val_weak_ref(*st);
+}
+
+void llvm_val_weak_lock(Value *res, Value *w) {
+    *res = val_weak_lock(*w);
+}
+
 void llvm_val_from_i64(Value *res, int64_t v) {
     *res = val_number((double)v);
 }
@@ -1126,3 +1238,13 @@ void llvm_val_rand_trng(Value *res) { *res = rand_trng(); }
 void llvm_val_rand_trng_int(Value *res, Value *min, Value *max) { *res = rand_trng_int(*min, *max); }
 void llvm_val_rand_reseed_trng(Value *res) { *res = rand_reseed_trng(); }
 
+void llvm_val_time_now(Value *res) { *res = time_now(); }
+void llvm_val_time_unix(Value *res) { *res = time_unix(); }
+void llvm_val_time_unix_ms(Value *res) { *res = time_unix_ms(); }
+void llvm_val_time_monotonic(Value *res) { *res = time_monotonic(); }
+void llvm_val_time_monotonic_ms(Value *res) { *res = time_monotonic_ms(); }
+void llvm_val_time_monotonic_ns(Value *res) { *res = time_monotonic_ns(); }
+void llvm_val_time_sleep(Value *res, Value *ms) { *res = time_sleep_ms(*ms); }
+void llvm_val_time_diff(Value *res, Value *start, Value *end) { *res = time_diff(*start, *end); }
+void llvm_val_time_format(Value *res, Value *ts, Value *fmt) { *res = time_format_utc(*ts, *fmt); }
+void llvm_val_time_format_local(Value *res, Value *ts, Value *fmt) { *res = time_format_local(*ts, *fmt); }
