@@ -1,0 +1,24 @@
+// test_short_alias.wyr - Verify Dual-Aliasing Standard Library imports in Wyrm 1.1.0
+use time;
+use random;
+use json;
+
+fn main() {
+    print("=== Wyrm 1.1.0 Dual-Aliasing Test ===")
+    
+    // Test time (short alias for std.time)
+    var ts = time_unix()
+    print("Unix Timestamp from 'use time':", ts)
+    
+    // Test random (short alias for std.random)
+    rand_seed(42)
+    var r = rand_int(1, 100)
+    print("Random Int [1..100] from 'use random':", r)
+    
+    // Test json (short alias for std.json)
+    var parsed = json_parse("{\"status\": \"ok\", \"version\": \"1.1.0\"}")
+    print("JSON Status from 'use json':", parsed["status"])
+    print("JSON Version from 'use json':", parsed["version"])
+    
+    print("ALL DUAL-ALIASING TESTS PASSED!")
+}
