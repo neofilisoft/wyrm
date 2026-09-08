@@ -1,12 +1,12 @@
 # Wyrm Language Specification
 
-This document describes the Wyrm language design and architecture implemented in the repository. The canonical project version is stored in the [VERSION](file:///c:/Users/BEST/Desktop/wyrm/VERSION) file (currently **1.0.0**).
+This document describes the Wyrm language design and architecture implemented in the repository. The canonical project version is stored in the [VERSION](file:///c:/Users/BEST/Desktop/wyrm/VERSION) file (currently **1.1.0**).
 
 ---
 
 ## 1. Toolchain & Runtime
 
-- **`wyrmc`**: The primary self-hosted compiler and execution runner implemented in pure Wyrm ([compiler/wyrmc.wyr](file:///c:/Users/BEST/Desktop/wyrm/compiler/wyrmc.wyr)). Supports ahead-of-time native binary compilation (`wyrmc build file.wyr`) and instant runner mode (`wyrmc run file.wyr`).
+- **`wyrmc`**: The primary self-hosted compiler and execution runner implemented in pure Wyrm ([compiler/wyrmc.wyr](file:///c:/Users/BEST/Desktop/wyrm/compiler/wyrmc.wyr)). Supports ahead-of-time native binary compilation (`wyrmc build file.wyr`), instant runner mode (`wyrmc run file.wyr`), and cache cleaning (`wyrmc clean [--all]`).
 - **`wyrpkg`**: The project and package manager (Cargo-inspired workflow: `new`, `init`, `build`, `run`, `install`, `update`, `publish`, `remove`, `list`).
 - **AOT Codegen Path**: LLVM IR compilation directly to native machine binaries via Clang / LLVM toolchain.
 - **Stage 0 Bootstrap Toolchain**: Native C11 / C++20 toolchain built via [bootstrap.c](file:///c:/Users/BEST/Desktop/wyrm/wyrm/src/bootstrap.c) to build Stage 0 and bootstrap the self-hosted compiler.
@@ -21,7 +21,7 @@ This document describes the Wyrm language design and architecture implemented in
 - Block comments use `/*` and `*/`.
 - Documentation comments start with `///`.
 - Block delimiters use `{` and `}`.
-- Semicolons: **Optional** at most statement boundaries; **required** at the end of `use` statements (e.g. `use std.sdl;`).
+- Semicolons: **Optional** at most statement boundaries; **required** at the end of `use` statements (e.g. `use std.time;` or `use time;`).
 - Editor Support: VS Code syntax highlighting extension with TextMate grammar lives in [extension/](file:///c:/Users/BEST/Desktop/wyrm/extension).
 
 ---
@@ -204,9 +204,9 @@ Wyrm employs a **Deterministic Dynamic Value Runtime with RAII Drop Glue and Sco
 
 ---
 
-## 11. Standard Library Modules (1.0.0)
+## 11. Standard Library Modules & Dual-Aliasing (1.1.0)
 
-Imported via `use std.<module>;`:
+Imported via short alias `use <module>;` or canonical namespace `use std.<module>;` (e.g. `use time;` or `use std.time;`):
 
 ### `std.time` - High-Resolution Timers & Formatting
 High-precision monotonic clock (Windows QPC / POSIX CLOCK_MONOTONIC), Unix epoch wall-clock timestamps, millisecond thread sleep, and date/time formatting:
