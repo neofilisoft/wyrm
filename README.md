@@ -64,7 +64,7 @@ Wyrm (`.wyr`) is a static systems programming language with a self-hosted compil
 - `fn main()` is the program entry point and is called automatically (like C)
 - Ownership and RAII direction with `owned`, `unsafe`, `arena` allocation, and raw memory APIs (`malloc`, `free`, `realloc`)
 - 15 built-in type conversion and string operations: `str`, `split`, `join`, `trim`, `upper`, `lower`, `contains`, `replace`, `starts_with`, `ends_with`, `char_at`, `ord_val`, `chr_val`, `to_bytes`, `from_bytes`
-- **Standard Library Modules** (v3.2.1):
+- **Standard Library Modules** (v1.0.0):
   - `std.time`: High-resolution monotonic timers (Windows QPC / POSIX CLOCK_MONOTONIC), Unix epoch wall-clock timestamps, sleep, and date/time formatting
   - `std.random`: PRNG (Xoshiro256**), CSPRNG (OS Cryptographic API), and TRNG (CPU Hardware RDRAND with OS entropy fallback)
   - `std.sdl`: Windowing, 2D hardware rendering, keyboard & mouse event loop
@@ -79,7 +79,7 @@ Wyrm (`.wyr`) is a static systems programming language with a self-hosted compil
 Build the toolchain from source using the self-contained C11 bootstrap compiler:
 
 ```bash
-gcc wyrm/scr/bootstrap.c -o bootstrap.exe -std=c11 -O2
+gcc wyrm/src/bootstrap.c -o bootstrap.exe -std=c11 -O2
 ./bootstrap.exe
 ```
 
@@ -172,7 +172,7 @@ entry = "main.wyr"
 
 ## Repository Layout
 
-- `wyrm/scr/`: native bootstrap compiler (`bootstrap.c`), `wyrmc.cpp`, `wyrpkg.cpp`
+- `wyrm/src/`: native bootstrap compiler (`bootstrap.c`), `wyrmc.cpp`, `wyrpkg.cpp`
 - `wyrm/lib/`: C runtime library (`wyrm_core.c/h`, `wyrm_str.c/h`, `wyrm_arena.c/h`, `wyrm_ffi.c/h`) linked by compiled programs
 - `wyrm/lib/stdlib/`: native C backends for standard library modules (`wyrm_std_sdl`, `wyrm_std_json`, `wyrm_std_yaml`, `wyrm_std_collections`)
 - `compiler/`: self-hosted Wyrm compiler source (`wyrmc.wyr`) and C++ bootstrap front-end (lexer, parser, interpreter, transpiler, and `stdlib_setup`)
@@ -184,6 +184,10 @@ entry = "main.wyr"
 ## Language Specification
 
 See `docs/Docs.md` for the current Wyrm language specification.
+
+## License
+
+MIT License - see LICENSE.
 
 ## Copyright
 

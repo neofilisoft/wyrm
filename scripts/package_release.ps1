@@ -1,4 +1,4 @@
-# Wyrm v3.2.1 Binary Release Packager for Windows x64
+# Wyrm 1.0.0 Binary Release Packager for Windows x64
 $ErrorActionPreference = "Stop"
 
 $RootDir = (Get-Item $PSScriptRoot).Parent.FullName
@@ -78,6 +78,13 @@ $zipPathPlain = Join-Path $DistDir "wyrm-$Version-windows-x64.zip"
 Write-Host "Compressing $zipPathV..." -ForegroundColor Cyan
 Compress-Archive -Path "$StageDir\*" -DestinationPath $zipPathV -Force
 Copy-Item $zipPathV -Destination $zipPathPlain -Force
+
+# Copy direct binaries to $DistDir and $DistDir/bin for immediate access
+New-Item -ItemType Directory -Force -Path (Join-Path $DistDir "bin") | Out-Null
+Copy-Item $wyrmcSrc -Destination (Join-Path $DistDir "wyrmc.exe") -Force
+Copy-Item $wyrpkgSrc -Destination (Join-Path $DistDir "wyrpkg.exe") -Force
+Copy-Item $wyrmcSrc -Destination (Join-Path $DistDir "bin\wyrmc.exe") -Force
+Copy-Item $wyrpkgSrc -Destination (Join-Path $DistDir "bin\wyrpkg.exe") -Force
 
 # 6. Calculate SHA256 checksum
 $hash = (Get-FileHash -Path $zipPathV -Algorithm SHA256).Hash

@@ -1,5 +1,5 @@
 // ============================================================
-//  oae.wyr - OAE / Soken Digital Identity Generator (Wyrm v3.2+)
+//  oae.wyr - OAE / Soken Digital Identity Generator 
 // ============================================================
 
 use std.json;
@@ -71,7 +71,7 @@ fn emit_identity(seed_val) {
     var legs_fat = rand() * 4.0
     var mem_str = 20.0 + rand() * 30.0
 
-    // ---- JSON Object Building ----
+    // JSON Object Building
     var root = json_object()
     json_set(root, "schema", "soken_identity_v1")
     json_set(root, "token_id", token_id)
@@ -145,7 +145,7 @@ fn emit_identity(seed_val) {
     var meta = json_object()
     json_set(meta, "potential", potential)
     json_set(meta, "rng_seed", seed_val)
-    json_set(meta, "generated_by", "oae.wyr (Wyrm v3.2+)")
+    json_set(meta, "generated_by", "oae.wyr")
     json_set(root, "meta", meta)
 
     print("========== DIGITAL IDENTITY (JSON) ==========")
@@ -169,7 +169,7 @@ fn main() {
         print("RNG seeded via high-precision timestamp")
     }
 
-    print("--- OAE / Soken Digital Identity Generator (Wyrm v3.2+) ---")
+    print("OAE / Soken Digital Identity Generator")
     print("")
 
     emit_identity(seed_val)

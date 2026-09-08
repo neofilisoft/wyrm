@@ -1,9 +1,9 @@
-// test_std_random.wyr - Test suite for std.random module in Wyrm v3.2.0
+// test_std_random.wyr - Test suite for std.random module in Wyrm 1.0.0
 
 use std.random;
 
 fn main() {
-    print("=== Testing std.random Module in Wyrm v3.2.0 ===")
+    print("=== Testing std.random Module in Wyrm 1.0.0 ===")
 
     // 1. PRNG Determinism & Seeding
     print("[1] Testing PRNG determinism with seed...")
