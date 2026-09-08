@@ -1,4 +1,4 @@
-# Wyrm 1.0.0 Binary Release Packager for Windows x64
+# Wyrm 1.1.0 Binary Release Packager for Windows x64
 $ErrorActionPreference = "Stop"
 
 $RootDir = (Get-Item $PSScriptRoot).Parent.FullName

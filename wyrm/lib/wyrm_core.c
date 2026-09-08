@@ -4,7 +4,6 @@
 #include "wyrm_ffi.h"
 #include "stdlib/wyrm_std_json.h"
 #include "stdlib/wyrm_std_yaml.h"
-#include "stdlib/wyrm_std_sdl.h"
 #include "stdlib/wyrm_std_collections.h"
 #include "stdlib/wyrm_std_random.h"
 #include "stdlib/wyrm_std_time.h"
@@ -218,8 +217,12 @@ Value val_input(Value prompt) {
     char buf[1024];
     if (fgets(buf, sizeof(buf), stdin)) {
         size_t len = strlen(buf);
-        if (len > 0 && buf[len - 1] == '\n') {
+        while (len > 0 && (buf[len - 1] == '\n' || buf[len - 1] == '\r')) {
             buf[len - 1] = '\0';
+            len--;
+        }
+        if (len >= 3 && (unsigned char)buf[0] == 0xEF && (unsigned char)buf[1] == 0xBB && (unsigned char)buf[2] == 0xBF) {
+            memmove(buf, buf + 3, len - 2);
         }
         return val_string(buf);
     }
@@ -256,9 +259,16 @@ Value val_int(Value v) {
     } else if (v.type == VAL_BOOL) {
         return val_number(v.as.boolean ? 1.0 : 0.0);
     } else if (v.type == VAL_STRING) {
+        const char *str = v.as.string;
+        if ((unsigned char)str[0] == 0xEF && (unsigned char)str[1] == 0xBB && (unsigned char)str[2] == 0xBF) {
+            str += 3;
+        }
         char *end = NULL;
-        double result = strtod(v.as.string, &end);
-        if (end == v.as.string || *end != '\0') {
+        double result = strtod(str, &end);
+        while (end && *end != '\0' && isspace((unsigned char)*end)) {
+            end++;
+        }
+        if (end == str || *end != '\0') {
             fprintf(stderr, "Runtime Error: int() cannot convert string to a number: '%s'\n", v.as.string);
             exit(1);
         }
@@ -273,9 +283,16 @@ Value val_float(Value v) {
     } else if (v.type == VAL_BOOL) {
         return val_number(v.as.boolean ? 1.0 : 0.0);
     } else if (v.type == VAL_STRING) {
+        const char *str = v.as.string;
+        if ((unsigned char)str[0] == 0xEF && (unsigned char)str[1] == 0xBB && (unsigned char)str[2] == 0xBF) {
+            str += 3;
+        }
         char *end = NULL;
-        double result = strtod(v.as.string, &end);
-        if (end == v.as.string || *end != '\0') {
+        double result = strtod(str, &end);
+        while (end && *end != '\0' && isspace((unsigned char)*end)) {
+            end++;
+        }
+        if (end == str || *end != '\0') {
             fprintf(stderr, "Runtime Error: float() cannot convert string to a number: '%s'\n", v.as.string);
             exit(1);
         }
@@ -1206,18 +1223,6 @@ void llvm_val_set_del(Value *res, Value *s, Value *v) { *res = set_del(*s, *v); 
 void llvm_val_set_union(Value *res, Value *a, Value *b) { *res = set_union_fn(*a, *b); }
 void llvm_val_set_intersect(Value *res, Value *a, Value *b) { *res = set_intersect(*a, *b); }
 void llvm_val_set_to_array(Value *res, Value *s) { *res = set_to_array(*s); }
-
-void llvm_val_sdl_init(Value *res) { *res = sdl_init(); }
-void llvm_val_sdl_quit(Value *res) { *res = sdl_quit(); }
-void llvm_val_sdl_window(Value *res, Value *title, Value *w, Value *h) { *res = sdl_window(*title, *w, *h); }
-void llvm_val_sdl_destroy_window(Value *res, Value *win) { *res = sdl_destroy_window(*win); }
-void llvm_val_sdl_poll_event(Value *res) { *res = sdl_poll_event(); }
-void llvm_val_sdl_clear(Value *res, Value *win, Value *r, Value *g, Value *b) { *res = sdl_clear(*win, *r, *g, *b); }
-void llvm_val_sdl_present(Value *res, Value *win) { *res = sdl_present(*win); }
-void llvm_val_sdl_draw_rect(Value *res, Value *win, Value *x, Value *y, Value *w, Value *h, Value *r, Value *g, Value *b) { *res = sdl_draw_rect(*win, *x, *y, *w, *h, *r, *g, *b); }
-void llvm_val_sdl_draw_line(Value *res, Value *win, Value *x1, Value *y1, Value *x2, Value *y2, Value *r, Value *g, Value *b) { *res = sdl_draw_line(*win, *x1, *y1, *x2, *y2, *r, *g, *b); }
-void llvm_val_sdl_delay(Value *res, Value *ms) { *res = sdl_delay(*ms); }
-void llvm_val_sdl_ticks(Value *res) { *res = sdl_ticks(); }
 
 void llvm_val_ffi_open(Value *res, Value *path) { *res = ffi_open(*path); }
 void llvm_val_ffi_sym(Value *res, Value *lib, Value *sym) { *res = ffi_sym(*lib, *sym); }

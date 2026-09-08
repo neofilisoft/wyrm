@@ -8,6 +8,7 @@
 #include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
+#include <ctype.h>
 
 typedef enum {
     VAL_NULL,
@@ -250,18 +251,6 @@ void llvm_val_set_del(Value *res, Value *s, Value *v);
 void llvm_val_set_union(Value *res, Value *a, Value *b);
 void llvm_val_set_intersect(Value *res, Value *a, Value *b);
 void llvm_val_set_to_array(Value *res, Value *s);
-
-void llvm_val_sdl_init(Value *res);
-void llvm_val_sdl_quit(Value *res);
-void llvm_val_sdl_window(Value *res, Value *title, Value *w, Value *h);
-void llvm_val_sdl_destroy_window(Value *res, Value *win);
-void llvm_val_sdl_poll_event(Value *res);
-void llvm_val_sdl_clear(Value *res, Value *win, Value *r, Value *g, Value *b);
-void llvm_val_sdl_present(Value *res, Value *win);
-void llvm_val_sdl_draw_rect(Value *res, Value *win, Value *x, Value *y, Value *w, Value *h, Value *r, Value *g, Value *b);
-void llvm_val_sdl_draw_line(Value *res, Value *win, Value *x1, Value *y1, Value *x2, Value *y2, Value *r, Value *g, Value *b);
-void llvm_val_sdl_delay(Value *res, Value *ms);
-void llvm_val_sdl_ticks(Value *res);
 
 void llvm_val_ffi_open(Value *res, Value *path);
 void llvm_val_ffi_sym(Value *res, Value *lib, Value *sym);

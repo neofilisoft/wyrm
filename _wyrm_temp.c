@@ -6,6 +6,7 @@
 #include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
+#include <ctype.h>
 
 typedef enum {
     VAL_NULL,
@@ -249,18 +250,6 @@ void llvm_val_set_union(Value *res, Value *a, Value *b);
 void llvm_val_set_intersect(Value *res, Value *a, Value *b);
 void llvm_val_set_to_array(Value *res, Value *s);
 
-void llvm_val_sdl_init(Value *res);
-void llvm_val_sdl_quit(Value *res);
-void llvm_val_sdl_window(Value *res, Value *title, Value *w, Value *h);
-void llvm_val_sdl_destroy_window(Value *res, Value *win);
-void llvm_val_sdl_poll_event(Value *res);
-void llvm_val_sdl_clear(Value *res, Value *win, Value *r, Value *g, Value *b);
-void llvm_val_sdl_present(Value *res, Value *win);
-void llvm_val_sdl_draw_rect(Value *res, Value *win, Value *x, Value *y, Value *w, Value *h, Value *r, Value *g, Value *b);
-void llvm_val_sdl_draw_line(Value *res, Value *win, Value *x1, Value *y1, Value *x2, Value *y2, Value *r, Value *g, Value *b);
-void llvm_val_sdl_delay(Value *res, Value *ms);
-void llvm_val_sdl_ticks(Value *res);
-
 void llvm_val_ffi_open(Value *res, Value *path);
 void llvm_val_ffi_sym(Value *res, Value *lib, Value *sym);
 void llvm_val_ffi_call(Value *res, Value *fn_ptr, Value *args);
@@ -490,85 +479,6 @@ Value yaml_parse(Value yaml_str);
  * Produces block-style YAML with 2-space indentation.
  */
 Value yaml_encode(Value val);
-
-#ifdef __cplusplus
-}
-#endif
-
-/*
- * wyrm_std_sdl.h - Wyrm Standard Library: SDL2 Window & Input Binding
- *
- * Runtime-loaded SDL2 binding via dlopen/LoadLibrary.
- * SDL2 does NOT need to be linked at compile time - only SDL2.dll or
- * libSDL2.so needs to be present at runtime. The path is resolved by:
- *   1. WYRM_SDL2_PATH environment variable
- *   2. Platform default name (SDL2.dll / libSDL2.so / libSDL2-2.0.0.dylib)
- *
- * Wyrm SDL2 event map keys:
- *   "type"     -> string: "quit", "keydown", "keyup", "mousemotion",
- *                          "mousedown", "mouseup", "none"
- *   "key"      -> string: SDL key name (e.g. "Escape", "Space", "Up")
- *   "scancode" -> number: SDL scancode integer
- *   "mouse_x"  -> number: mouse X position
- *   "mouse_y"  -> number: mouse Y position
- *   "button"   -> number: mouse button index
- */
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-/* Initialize SDL2 (loads the SDL2 library). Must be called first.
- * Returns null on success, error string on failure.        */
-Value sdl_init(void);
-
-/* Shut down SDL2 and release resources. */
-Value sdl_quit(void);
-
-/* Create a window.
- *   title     - window title string
- *   width     - window width in pixels
- *   height    - window height in pixels
- * Returns a VAL_RAW_PTR(WyrmSdlWindow) or error.          */
-Value sdl_window(Value title, Value width, Value height);
-
-/* Destroy a window created by sdl_window. */
-Value sdl_destroy_window(Value win_val);
-
-/* Poll the next event from the SDL event queue.
- * Returns a JSON-style object map with event data.
- * Returns an object with type="none" if no event is pending. */
-Value sdl_poll_event(void);
-
-/* Clear the window to the given RGB color (0-255 each). */
-Value sdl_clear(Value win_val, Value r, Value g, Value b);
-
-/* Present (flip) the window back buffer. */
-Value sdl_present(Value win_val);
-
-/* Draw a filled rectangle. */
-Value sdl_draw_rect(Value win_val, Value x, Value y, Value w, Value h,
-                    Value r, Value g, Value b);
-
-/* Draw a line. */
-Value sdl_draw_line(Value win_val, Value x1, Value y1, Value x2, Value y2,
-                    Value r, Value g, Value b);
-
-/* Delay execution by ms milliseconds (useful for frame rate control). */
-Value sdl_delay(Value ms);
-
-/* Return the number of milliseconds since SDL initialization. */
-Value sdl_ticks(void);
-
-/* SDL event type constants as Values - used in Wyrm comparisons */
-extern const char *const WYRM_SDL_EVT_QUIT;
-extern const char *const WYRM_SDL_EVT_KEYDOWN;
-extern const char *const WYRM_SDL_EVT_KEYUP;
-extern const char *const WYRM_SDL_EVT_MOUSEMOTION;
-extern const char *const WYRM_SDL_EVT_MOUSEDOWN;
-extern const char *const WYRM_SDL_EVT_MOUSEUP;
-extern const char *const WYRM_SDL_EVT_NONE;
 
 #ifdef __cplusplus
 }
@@ -968,8 +878,12 @@ Value val_input(Value prompt) {
     char buf[1024];
     if (fgets(buf, sizeof(buf), stdin)) {
         size_t len = strlen(buf);
-        if (len > 0 && buf[len - 1] == '\n') {
+        while (len > 0 && (buf[len - 1] == '\n' || buf[len - 1] == '\r')) {
             buf[len - 1] = '\0';
+            len--;
+        }
+        if (len >= 3 && (unsigned char)buf[0] == 0xEF && (unsigned char)buf[1] == 0xBB && (unsigned char)buf[2] == 0xBF) {
+            memmove(buf, buf + 3, len - 2);
         }
         return val_string(buf);
     }
@@ -1006,9 +920,16 @@ Value val_int(Value v) {
     } else if (v.type == VAL_BOOL) {
         return val_number(v.as.boolean ? 1.0 : 0.0);
     } else if (v.type == VAL_STRING) {
+        const char *str = v.as.string;
+        if ((unsigned char)str[0] == 0xEF && (unsigned char)str[1] == 0xBB && (unsigned char)str[2] == 0xBF) {
+            str += 3;
+        }
         char *end = NULL;
-        double result = strtod(v.as.string, &end);
-        if (end == v.as.string || *end != '\0') {
+        double result = strtod(str, &end);
+        while (end && *end != '\0' && isspace((unsigned char)*end)) {
+            end++;
+        }
+        if (end == str || *end != '\0') {
             fprintf(stderr, "Runtime Error: int() cannot convert string to a number: '%s'\n", v.as.string);
             exit(1);
         }
@@ -1023,9 +944,16 @@ Value val_float(Value v) {
     } else if (v.type == VAL_BOOL) {
         return val_number(v.as.boolean ? 1.0 : 0.0);
     } else if (v.type == VAL_STRING) {
+        const char *str = v.as.string;
+        if ((unsigned char)str[0] == 0xEF && (unsigned char)str[1] == 0xBB && (unsigned char)str[2] == 0xBF) {
+            str += 3;
+        }
         char *end = NULL;
-        double result = strtod(v.as.string, &end);
-        if (end == v.as.string || *end != '\0') {
+        double result = strtod(str, &end);
+        while (end && *end != '\0' && isspace((unsigned char)*end)) {
+            end++;
+        }
+        if (end == str || *end != '\0') {
             fprintf(stderr, "Runtime Error: float() cannot convert string to a number: '%s'\n", v.as.string);
             exit(1);
         }
@@ -1956,18 +1884,6 @@ void llvm_val_set_del(Value *res, Value *s, Value *v) { *res = set_del(*s, *v); 
 void llvm_val_set_union(Value *res, Value *a, Value *b) { *res = set_union_fn(*a, *b); }
 void llvm_val_set_intersect(Value *res, Value *a, Value *b) { *res = set_intersect(*a, *b); }
 void llvm_val_set_to_array(Value *res, Value *s) { *res = set_to_array(*s); }
-
-void llvm_val_sdl_init(Value *res) { *res = sdl_init(); }
-void llvm_val_sdl_quit(Value *res) { *res = sdl_quit(); }
-void llvm_val_sdl_window(Value *res, Value *title, Value *w, Value *h) { *res = sdl_window(*title, *w, *h); }
-void llvm_val_sdl_destroy_window(Value *res, Value *win) { *res = sdl_destroy_window(*win); }
-void llvm_val_sdl_poll_event(Value *res) { *res = sdl_poll_event(); }
-void llvm_val_sdl_clear(Value *res, Value *win, Value *r, Value *g, Value *b) { *res = sdl_clear(*win, *r, *g, *b); }
-void llvm_val_sdl_present(Value *res, Value *win) { *res = sdl_present(*win); }
-void llvm_val_sdl_draw_rect(Value *res, Value *win, Value *x, Value *y, Value *w, Value *h, Value *r, Value *g, Value *b) { *res = sdl_draw_rect(*win, *x, *y, *w, *h, *r, *g, *b); }
-void llvm_val_sdl_draw_line(Value *res, Value *win, Value *x1, Value *y1, Value *x2, Value *y2, Value *r, Value *g, Value *b) { *res = sdl_draw_line(*win, *x1, *y1, *x2, *y2, *r, *g, *b); }
-void llvm_val_sdl_delay(Value *res, Value *ms) { *res = sdl_delay(*ms); }
-void llvm_val_sdl_ticks(Value *res) { *res = sdl_ticks(); }
 
 void llvm_val_ffi_open(Value *res, Value *path) { *res = ffi_open(*path); }
 void llvm_val_ffi_sym(Value *res, Value *lib, Value *sym) { *res = ffi_sym(*lib, *sym); }
@@ -3448,383 +3364,6 @@ Value yaml_encode(Value val) {
     Value result = val_string(b.buf);
     free(b.buf);
     return result;
-}
-/*
- * wyrm_std_sdl.c - Wyrm Standard Library: SDL2 Runtime Binding
- *
- * Loads SDL2 at runtime via dlopen/LoadLibrary so no compile-time SDL2
- * headers or libraries are needed. Function pointers are resolved from
- * the shared library and called through the function pointer table.
- *
- * SDL2 ABI types are redefined here to avoid the SDL2 header dependency.
- */
-
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
-#include <stdint.h>
-
-/* --------------------------------------------------------------------------
- * Event type constants
- * -------------------------------------------------------------------------- */
-const char *const WYRM_SDL_EVT_QUIT        = "quit";
-const char *const WYRM_SDL_EVT_KEYDOWN     = "keydown";
-const char *const WYRM_SDL_EVT_KEYUP       = "keyup";
-const char *const WYRM_SDL_EVT_MOUSEMOTION = "mousemotion";
-const char *const WYRM_SDL_EVT_MOUSEDOWN   = "mousedown";
-const char *const WYRM_SDL_EVT_MOUSEUP     = "mouseup";
-const char *const WYRM_SDL_EVT_NONE        = "none";
-
-/* --------------------------------------------------------------------------
- * Platform-specific dynamic loading (duplicates from wyrm_ffi.c
- * intentionally - this module is self-contained)
- * -------------------------------------------------------------------------- */
-#ifdef _WIN32
-#  define WIN32_LEAN_AND_MEAN
-#  include <windows.h>
-typedef HMODULE SdlDlHandle;
-static SdlDlHandle sdl_dl_open(const char *p) { return LoadLibraryA(p); }
-static void       *sdl_dl_sym(SdlDlHandle h, const char *s) { return (void *)(uintptr_t)GetProcAddress(h, s); }
-#else
-#  include <dlfcn.h>
-typedef void *SdlDlHandle;
-static SdlDlHandle sdl_dl_open(const char *p) { return dlopen(p, RTLD_LAZY | RTLD_LOCAL); }
-static void       *sdl_dl_sym(SdlDlHandle h, const char *s) { return dlsym(h, s); }
-#endif
-
-/* --------------------------------------------------------------------------
- * Minimal SDL2 ABI types (redefined without SDL2 headers)
- * -------------------------------------------------------------------------- */
-typedef void  SDL2_Window;
-typedef void  SDL2_Renderer;
-typedef uint32_t SDL2_EventType;
-
-#define SDL2_INIT_VIDEO   0x00000020u
-#define SDL2_WINDOW_SHOWN 0x00000004u
-
-#define SDL2_QUIT          0x100u
-#define SDL2_KEYDOWN       0x300u
-#define SDL2_KEYUP         0x301u
-#define SDL2_MOUSEMOTION   0x400u
-#define SDL2_MOUSEBUTTONDOWN 0x401u
-#define SDL2_MOUSEBUTTONUP   0x402u
-
-#define SDL2_WINDOWPOS_CENTERED 0x2FFF0000u
-
-typedef struct { uint8_t scancode; } SDL2_Keysym;
-typedef struct { SDL2_EventType type; uint8_t pad[3]; SDL2_Keysym keysym; } SDL2_KeyboardEvent;
-typedef struct { SDL2_EventType type; uint8_t pad[3]; int32_t x; int32_t y; int32_t xrel; int32_t yrel; } SDL2_MouseMotionEvent;
-typedef struct { SDL2_EventType type; uint8_t pad[3]; uint8_t button; int32_t x; int32_t y; } SDL2_MouseButtonEvent;
-
-typedef union {
-    SDL2_EventType        type;
-    SDL2_KeyboardEvent    key;
-    SDL2_MouseMotionEvent motion;
-    SDL2_MouseButtonEvent button;
-    uint8_t               padding[56];
-} SDL2_Event;
-
-/* --------------------------------------------------------------------------
- * SDL2 function pointer table
- * -------------------------------------------------------------------------- */
-typedef struct {
-    SdlDlHandle handle;
-    int  (*SDL_Init)(uint32_t flags);
-    void (*SDL_Quit)(void);
-    SDL2_Window    *(*SDL_CreateWindow)(const char *title, int x, int y, int w, int h, uint32_t flags);
-    SDL2_Renderer  *(*SDL_CreateRenderer)(SDL2_Window *win, int index, uint32_t flags);
-    void (*SDL_DestroyWindow)(SDL2_Window *win);
-    void (*SDL_DestroyRenderer)(SDL2_Renderer *ren);
-    int  (*SDL_PollEvent)(SDL2_Event *event);
-    int  (*SDL_SetRenderDrawColor)(SDL2_Renderer *ren, uint8_t r, uint8_t g, uint8_t b, uint8_t a);
-    int  (*SDL_RenderClear)(SDL2_Renderer *ren);
-    void (*SDL_RenderPresent)(SDL2_Renderer *ren);
-    int  (*SDL_RenderFillRect)(SDL2_Renderer *ren, const void *rect);
-    int  (*SDL_RenderDrawLine)(SDL2_Renderer *ren, int x1, int y1, int x2, int y2);
-    void (*SDL_Delay)(uint32_t ms);
-    uint32_t (*SDL_GetTicks)(void);
-    const char *(*SDL_GetKeyName)(int scancode);
-    const char *(*SDL_GetError)(void);
-} SdlFnTable;
-
-typedef struct {
-    SDL2_Window   *window;
-    SDL2_Renderer *renderer;
-} WyrmSdlWindow;
-
-static SdlFnTable g_sdl = { 0 };
-static int g_sdl_loaded = 0;
-
-/* --------------------------------------------------------------------------
- * Load SDL2 shared library
- * -------------------------------------------------------------------------- */
-static int load_sdl2(void) {
-    if (g_sdl_loaded) return 1;
-
-    /* Resolve library path */
-    const char *lib_path = getenv("WYRM_SDL2_PATH");
-#ifdef _WIN32
-    const char *default_path = "SDL2.dll";
-#elif defined(__APPLE__)
-    const char *default_path = "libSDL2-2.0.0.dylib";
-#else
-    const char *default_path = "libSDL2-2.0.so.0";
-#endif
-    if (!lib_path) lib_path = default_path;
-
-    SdlDlHandle h = sdl_dl_open(lib_path);
-    if (!h) {
-        fprintf(stderr, "Runtime Error [sdl_init]: cannot load SDL2 library '%s'.\n"
-                        "  Install SDL2 or set WYRM_SDL2_PATH to point to it.\n", lib_path);
-        return 0;
-    }
-
-#define LOAD_SYM(fn) \
-    *(void **)(&g_sdl.fn) = sdl_dl_sym(h, #fn); \
-    if (!g_sdl.fn) { fprintf(stderr, "Runtime Error [sdl_init]: SDL2 symbol '%s' not found\n", #fn); return 0; }
-
-    LOAD_SYM(SDL_Init)
-    LOAD_SYM(SDL_Quit)
-    LOAD_SYM(SDL_CreateWindow)
-    LOAD_SYM(SDL_CreateRenderer)
-    LOAD_SYM(SDL_DestroyWindow)
-    LOAD_SYM(SDL_DestroyRenderer)
-    LOAD_SYM(SDL_PollEvent)
-    LOAD_SYM(SDL_SetRenderDrawColor)
-    LOAD_SYM(SDL_RenderClear)
-    LOAD_SYM(SDL_RenderPresent)
-    LOAD_SYM(SDL_RenderFillRect)
-    LOAD_SYM(SDL_RenderDrawLine)
-    LOAD_SYM(SDL_Delay)
-    LOAD_SYM(SDL_GetTicks)
-    LOAD_SYM(SDL_GetKeyName)
-    LOAD_SYM(SDL_GetError)
-#undef LOAD_SYM
-
-    g_sdl.handle  = h;
-    g_sdl_loaded  = 1;
-    return 1;
-}
-
-/* --------------------------------------------------------------------------
- * Helper: build an event map object
- * -------------------------------------------------------------------------- */
-static Value make_event_map(const char *type, const char *key,
-                             int scancode, int mx, int my, int btn) {
-    Value obj = json_object();
-    Value vtype  = val_string(type);
-    Value vkey   = val_string(key);
-    Value vsc    = val_number((double)scancode);
-    Value vmx    = val_number((double)mx);
-    Value vmy    = val_number((double)my);
-    Value vbtn   = val_number((double)btn);
-    Value k_type = val_string("type");
-    Value k_key  = val_string("key");
-    Value k_sc   = val_string("scancode");
-    Value k_mx   = val_string("mouse_x");
-    Value k_my   = val_string("mouse_y");
-    Value k_btn  = val_string("button");
-    obj = json_set(obj, k_type, vtype); val_drop(k_type); val_drop(vtype);
-    obj = json_set(obj, k_key,  vkey);  val_drop(k_key);  val_drop(vkey);
-    obj = json_set(obj, k_sc,   vsc);   val_drop(k_sc);   val_drop(vsc);
-    obj = json_set(obj, k_mx,   vmx);   val_drop(k_mx);   val_drop(vmx);
-    obj = json_set(obj, k_my,   vmy);   val_drop(k_my);   val_drop(vmy);
-    obj = json_set(obj, k_btn,  vbtn);  val_drop(k_btn);  val_drop(vbtn);
-    return obj;
-}
-
-/* --------------------------------------------------------------------------
- * Public: sdl_init
- * -------------------------------------------------------------------------- */
-Value sdl_init(void) {
-    if (!load_sdl2()) return val_error("sdl_init: failed to load SDL2");
-    if (g_sdl.SDL_Init(SDL2_INIT_VIDEO) < 0) {
-        const char *err = g_sdl.SDL_GetError ? g_sdl.SDL_GetError() : "unknown";
-        char msg[512];
-        snprintf(msg, sizeof(msg), "sdl_init: SDL_Init failed: %s", err);
-        return val_error(msg);
-    }
-    return val_null();
-}
-
-/* --------------------------------------------------------------------------
- * Public: sdl_quit
- * -------------------------------------------------------------------------- */
-Value sdl_quit(void) {
-    if (g_sdl_loaded && g_sdl.SDL_Quit) g_sdl.SDL_Quit();
-    g_sdl_loaded = 0;
-    return val_null();
-}
-
-/* --------------------------------------------------------------------------
- * Public: sdl_window(title, width, height)
- * -------------------------------------------------------------------------- */
-Value sdl_window(Value title, Value width, Value height) {
-    if (!g_sdl_loaded) return val_error("sdl_window: call sdl_init() first");
-    if (title.type != VAL_STRING) return val_error("sdl_window: title must be a string");
-    if (width.type != VAL_NUMBER || height.type != VAL_NUMBER)
-        return val_error("sdl_window: width and height must be numbers");
-
-    int w = (int)width.as.number;
-    int h = (int)height.as.number;
-    if (w <= 0 || h <= 0) return val_error("sdl_window: width and height must be positive");
-
-    SDL2_Window *win = g_sdl.SDL_CreateWindow(
-        title.as.string,
-        (int)SDL2_WINDOWPOS_CENTERED, (int)SDL2_WINDOWPOS_CENTERED,
-        w, h,
-        SDL2_WINDOW_SHOWN
-    );
-    if (!win) {
-        const char *err = g_sdl.SDL_GetError ? g_sdl.SDL_GetError() : "unknown";
-        char msg[512];
-        snprintf(msg, sizeof(msg), "sdl_window: SDL_CreateWindow failed: %s", err);
-        return val_error(msg);
-    }
-
-    SDL2_Renderer *ren = g_sdl.SDL_CreateRenderer(win, -1, 0);
-    if (!ren) {
-        g_sdl.SDL_DestroyWindow(win);
-        const char *err = g_sdl.SDL_GetError ? g_sdl.SDL_GetError() : "unknown";
-        char msg[512];
-        snprintf(msg, sizeof(msg), "sdl_window: SDL_CreateRenderer failed: %s", err);
-        return val_error(msg);
-    }
-
-    WyrmSdlWindow *ctx = malloc(sizeof(WyrmSdlWindow));
-    if (!ctx) { g_sdl.SDL_DestroyRenderer(ren); g_sdl.SDL_DestroyWindow(win); return val_error("sdl_window: OOM"); }
-    ctx->window   = win;
-    ctx->renderer = ren;
-    return val_raw_ptr(ctx);
-}
-
-/* --------------------------------------------------------------------------
- * Public: sdl_destroy_window
- * -------------------------------------------------------------------------- */
-Value sdl_destroy_window(Value win_val) {
-    if (win_val.type != VAL_RAW_PTR || !win_val.as.raw_ptr) return val_null();
-    WyrmSdlWindow *ctx = (WyrmSdlWindow *)win_val.as.raw_ptr;
-    if (ctx->renderer) g_sdl.SDL_DestroyRenderer(ctx->renderer);
-    if (ctx->window)   g_sdl.SDL_DestroyWindow(ctx->window);
-    free(ctx);
-    return val_null();
-}
-
-/* --------------------------------------------------------------------------
- * Public: sdl_poll_event
- * -------------------------------------------------------------------------- */
-Value sdl_poll_event(void) {
-    if (!g_sdl_loaded) return val_error("sdl_poll_event: call sdl_init() first");
-    SDL2_Event ev;
-    if (!g_sdl.SDL_PollEvent(&ev)) {
-        return make_event_map(WYRM_SDL_EVT_NONE, "", 0, 0, 0, 0);
-    }
-    switch (ev.type) {
-        case SDL2_QUIT:
-            return make_event_map(WYRM_SDL_EVT_QUIT, "", 0, 0, 0, 0);
-        case SDL2_KEYDOWN: {
-            int sc = (int)ev.key.keysym.scancode;
-            const char *kname = g_sdl.SDL_GetKeyName ? g_sdl.SDL_GetKeyName(sc) : "";
-            return make_event_map(WYRM_SDL_EVT_KEYDOWN, kname ? kname : "", sc, 0, 0, 0);
-        }
-        case SDL2_KEYUP: {
-            int sc = (int)ev.key.keysym.scancode;
-            const char *kname = g_sdl.SDL_GetKeyName ? g_sdl.SDL_GetKeyName(sc) : "";
-            return make_event_map(WYRM_SDL_EVT_KEYUP, kname ? kname : "", sc, 0, 0, 0);
-        }
-        case SDL2_MOUSEMOTION:
-            return make_event_map(WYRM_SDL_EVT_MOUSEMOTION, "", 0,
-                                  (int)ev.motion.x, (int)ev.motion.y, 0);
-        case SDL2_MOUSEBUTTONDOWN:
-            return make_event_map(WYRM_SDL_EVT_MOUSEDOWN, "", 0,
-                                  (int)ev.button.x, (int)ev.button.y, (int)ev.button.button);
-        case SDL2_MOUSEBUTTONUP:
-            return make_event_map(WYRM_SDL_EVT_MOUSEUP, "", 0,
-                                  (int)ev.button.x, (int)ev.button.y, (int)ev.button.button);
-        default:
-            return make_event_map(WYRM_SDL_EVT_NONE, "", 0, 0, 0, 0);
-    }
-}
-
-/* --------------------------------------------------------------------------
- * Helper: validate and extract WyrmSdlWindow from Value
- * -------------------------------------------------------------------------- */
-static WyrmSdlWindow *get_ctx(const char *fn, Value win_val) {
-    if (win_val.type != VAL_RAW_PTR || !win_val.as.raw_ptr) {
-        fprintf(stderr, "Runtime Error [%s]: argument must be a window handle from sdl_window()\n", fn);
-        exit(1);
-    }
-    return (WyrmSdlWindow *)win_val.as.raw_ptr;
-}
-
-/* --------------------------------------------------------------------------
- * Public: sdl_clear(win, r, g, b)
- * -------------------------------------------------------------------------- */
-Value sdl_clear(Value win_val, Value r, Value g, Value b) {
-    WyrmSdlWindow *ctx = get_ctx("sdl_clear", win_val);
-    g_sdl.SDL_SetRenderDrawColor(ctx->renderer,
-        (uint8_t)r.as.number, (uint8_t)g.as.number,
-        (uint8_t)b.as.number, 255);
-    g_sdl.SDL_RenderClear(ctx->renderer);
-    return val_null();
-}
-
-/* --------------------------------------------------------------------------
- * Public: sdl_present(win)
- * -------------------------------------------------------------------------- */
-Value sdl_present(Value win_val) {
-    WyrmSdlWindow *ctx = get_ctx("sdl_present", win_val);
-    g_sdl.SDL_RenderPresent(ctx->renderer);
-    return val_null();
-}
-
-/* --------------------------------------------------------------------------
- * Public: sdl_draw_rect(win, x, y, w, h, r, g, b)
- * -------------------------------------------------------------------------- */
-Value sdl_draw_rect(Value win_val, Value x, Value y, Value w, Value h,
-                    Value r, Value g, Value b) {
-    WyrmSdlWindow *ctx = get_ctx("sdl_draw_rect", win_val);
-    g_sdl.SDL_SetRenderDrawColor(ctx->renderer,
-        (uint8_t)r.as.number, (uint8_t)g.as.number,
-        (uint8_t)b.as.number, 255);
-    /* SDL_Rect layout: x, y, w, h (int32) */
-    int32_t rect[4] = { (int32_t)x.as.number, (int32_t)y.as.number,
-                         (int32_t)w.as.number, (int32_t)h.as.number };
-    g_sdl.SDL_RenderFillRect(ctx->renderer, rect);
-    return val_null();
-}
-
-/* --------------------------------------------------------------------------
- * Public: sdl_draw_line(win, x1, y1, x2, y2, r, g, b)
- * -------------------------------------------------------------------------- */
-Value sdl_draw_line(Value win_val, Value x1, Value y1, Value x2, Value y2,
-                    Value r, Value g, Value b) {
-    WyrmSdlWindow *ctx = get_ctx("sdl_draw_line", win_val);
-    g_sdl.SDL_SetRenderDrawColor(ctx->renderer,
-        (uint8_t)r.as.number, (uint8_t)g.as.number,
-        (uint8_t)b.as.number, 255);
-    g_sdl.SDL_RenderDrawLine(ctx->renderer,
-        (int)x1.as.number, (int)y1.as.number,
-        (int)x2.as.number, (int)y2.as.number);
-    return val_null();
-}
-
-/* --------------------------------------------------------------------------
- * Public: sdl_delay(ms)
- * -------------------------------------------------------------------------- */
-Value sdl_delay(Value ms) {
-    if (!g_sdl_loaded || !g_sdl.SDL_Delay) return val_null();
-    uint32_t delay_ms = ms.type == VAL_NUMBER ? (uint32_t)ms.as.number : 0;
-    g_sdl.SDL_Delay(delay_ms);
-    return val_null();
-}
-
-/* --------------------------------------------------------------------------
- * Public: sdl_ticks()
- * -------------------------------------------------------------------------- */
-Value sdl_ticks(void) {
-    if (!g_sdl_loaded || !g_sdl.SDL_GetTicks) return val_number(0);
-    return val_number((double)g_sdl.SDL_GetTicks());
 }
 /*
  * wyrm_std_collections.c - Wyrm Standard Library: Collections Implementation
@@ -7220,6 +6759,10 @@ Value wyrm_fn_gen_expr(Value wyrm_var_node) {
     wyrm_var_builtin_func = val_string("llvm_val_array_pop");
     wyrm_var_is_builtin = val_bool(true);
     }
+    else if (val_to_bool(val_eq(wyrm_var_name, val_string("input")))) {
+    wyrm_var_builtin_func = val_string("llvm_val_input");
+    wyrm_var_is_builtin = val_bool(true);
+    }
     else if (val_to_bool(val_eq(wyrm_var_name, val_string("malloc")))) {
     wyrm_var_builtin_func = val_string("llvm_val_raw_malloc");
     wyrm_var_is_builtin = val_bool(true);
@@ -8498,7 +8041,7 @@ Value wyrm_fn_transpile_llvm(Value wyrm_var_ast) {
     wyrm_var_g_llvm_main = val_array_init(0);
     val_array_set(wyrm_var_has_main_def, val_number(0), val_bool(false));
     val_array_set(wyrm_var_temp_count, val_number(0), val_number(0));
-    val_array_append(wyrm_var_g_llvm_globals, val_string("; Module generated by Wyrm 3.2.0 Self-Hosted LLVM backend"));
+    val_array_append(wyrm_var_g_llvm_globals, val_string("; Module generated by Wyrm 1.1.0 Self-Hosted LLVM backend"));
     val_array_append(wyrm_var_g_llvm_globals, val_string("target datalayout = \"e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\""));
     val_array_append(wyrm_var_g_llvm_globals, val_string("target triple = \"x86_64-pc-windows-msvc\""));
     val_array_append(wyrm_var_g_llvm_globals, val_string("%struct.Value = type { i32, %union.anon }"));
@@ -8739,7 +8282,7 @@ Value wyrm_fn_parse_file(Value wyrm_var_path) {
     return val_array_init(0);
     }
     val_array_append(val_array_get(wyrm_var_g_processed_files, val_number(0)), wyrm_var_path);
-    if (val_to_bool(val_or(val_or(val_or(val_or(val_or(val_or(val_or(val_eq(wyrm_var_path, val_string("std.json")), val_eq(wyrm_var_path, val_string("std.yaml"))), val_eq(wyrm_var_path, val_string("std.collections"))), val_eq(wyrm_var_path, val_string("std.sdl"))), val_eq(wyrm_var_path, val_string("std.ffi"))), val_eq(wyrm_var_path, val_string("std.thread"))), val_eq(wyrm_var_path, val_string("std.random"))), val_eq(wyrm_var_path, val_string("std.time"))))) {
+    if (val_to_bool(val_or(val_or(val_or(val_or(val_or(val_or(val_or(val_or(val_or(val_or(val_or(val_or(val_or(val_eq(wyrm_var_path, val_string("std.json")), val_eq(wyrm_var_path, val_string("json"))), val_eq(wyrm_var_path, val_string("std.yaml"))), val_eq(wyrm_var_path, val_string("yaml"))), val_eq(wyrm_var_path, val_string("std.collections"))), val_eq(wyrm_var_path, val_string("collections"))), val_eq(wyrm_var_path, val_string("std.ffi"))), val_eq(wyrm_var_path, val_string("ffi"))), val_eq(wyrm_var_path, val_string("std.thread"))), val_eq(wyrm_var_path, val_string("thread"))), val_eq(wyrm_var_path, val_string("std.random"))), val_eq(wyrm_var_path, val_string("random"))), val_eq(wyrm_var_path, val_string("std.time"))), val_eq(wyrm_var_path, val_string("time"))))) {
     return val_array_init(0);
     }
     Value wyrm_var_alt_path = val_string("");
@@ -8889,26 +8432,43 @@ Value wyrm_fn_parse_file(Value wyrm_var_path) {
 Value wyrm_fn_main() {
     Value wyrm_var_args = val_sys_args();
     if (val_to_bool(val_lt(val_len(wyrm_var_args), val_number(2)))) {
-    val_print(1, val_string("wyrmc 1.0.0"));
+    val_print(1, val_string("wyrmc 1.1.0"));
     val_print(1, val_string("Usage:"));
     val_print(1, val_string("  wyrmc build <file.wyr> [-o <out.exe>]"));
     val_print(1, val_string("  wyrmc run <file.wyr> [args...]"));
+    val_print(1, val_string("  wyrmc clean [--all]"));
     val_print(1, val_string("  wyrmc --version"));
     val_print(1, val_string("  wyrmc --help"));
     val_exit(val_number(0));
     }
     Value wyrm_var_command = val_array_get(wyrm_var_args, val_number(1));
     if (val_to_bool(val_or(val_or(val_eq(wyrm_var_command, val_string("--version")), val_eq(wyrm_var_command, val_string("-v"))), val_eq(wyrm_var_command, val_string("version"))))) {
-    val_print(1, val_string("wyrmc 1.0.0"));
+    val_print(1, val_string("wyrmc 1.1.0"));
     val_exit(val_number(0));
     }
     if (val_to_bool(val_or(val_or(val_eq(wyrm_var_command, val_string("--help")), val_eq(wyrm_var_command, val_string("-h"))), val_eq(wyrm_var_command, val_string("help"))))) {
-    val_print(1, val_string("wyrmc 1.0.0"));
+    val_print(1, val_string("wyrmc 1.1.0"));
     val_print(1, val_string("Usage:"));
     val_print(1, val_string("  wyrmc build <file.wyr> [-o <out.exe>]"));
     val_print(1, val_string("  wyrmc run <file.wyr> [args...]"));
+    val_print(1, val_string("  wyrmc clean [--all]"));
     val_print(1, val_string("  wyrmc --version"));
     val_print(1, val_string("  wyrmc --help"));
+    val_exit(val_number(0));
+    }
+    if (val_to_bool(val_eq(wyrm_var_command, val_string("clean")))) {
+    Value wyrm_var_clean_all = val_bool(false);
+    if (val_to_bool(val_ge(val_len(wyrm_var_args), val_number(3)))) {
+    if (val_to_bool(val_or(val_eq(val_array_get(wyrm_var_args, val_number(2)), val_string("--all")), val_eq(val_array_get(wyrm_var_args, val_number(2)), val_string("-a"))))) {
+    wyrm_var_clean_all = val_bool(true);
+    }
+    }
+    val_system(val_string("cmd.exe /c \"del /q /f *_temp.ll _wyrm_temp.c *_run.exe *.o *.obj 2>nul\""));
+    if (val_to_bool(wyrm_var_clean_all)) {
+    val_system(val_string("powershell -NoProfile -Command \"Get-ChildItem -Filter *.exe | ForEach-Object { if ((Test-Path ($_.BaseName + '.wyr')) -or $_.Name -eq 'output.exe' -or $_.Name -eq 'a.exe') { Remove-Item $_.FullName -Force } }\" 2>nul"));
+    }
+    val_system(val_string("cmd.exe /c \"if exist .wyrm_cache rmdir /s /q .wyrm_cache 2>nul\""));
+    val_print(1, val_string("[wyrmc 1.1.0] Cleaned temporary build artifacts and cache."));
     val_exit(val_number(0));
     }
     if (val_to_bool(val_and(val_ne(wyrm_var_command, val_string("build")), val_ne(wyrm_var_command, val_string("run"))))) {
@@ -8982,11 +8542,10 @@ Value wyrm_fn_main() {
     Value wyrm_var_ffi_c = val_add(wyrm_var_lib_path, val_string("wyrm_ffi.c"));
     Value wyrm_var_std_json_c = val_add(wyrm_var_lib_path, val_string("stdlib/wyrm_std_json.c"));
     Value wyrm_var_std_yaml_c = val_add(wyrm_var_lib_path, val_string("stdlib/wyrm_std_yaml.c"));
-    Value wyrm_var_std_sdl_c = val_add(wyrm_var_lib_path, val_string("stdlib/wyrm_std_sdl.c"));
     Value wyrm_var_std_coll_c = val_add(wyrm_var_lib_path, val_string("stdlib/wyrm_std_collections.c"));
     Value wyrm_var_std_rand_c = val_add(wyrm_var_lib_path, val_string("stdlib/wyrm_std_random.c"));
     Value wyrm_var_std_time_c = val_add(wyrm_var_lib_path, val_string("stdlib/wyrm_std_time.c"));
-    Value wyrm_var_all_runtime = val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_string("\""), wyrm_var_runtime_c), val_string("\" \"")), wyrm_var_arena_c), val_string("\" \"")), wyrm_var_str_c), val_string("\" \"")), wyrm_var_ffi_c), val_string("\" \"")), wyrm_var_std_json_c), val_string("\" \"")), wyrm_var_std_yaml_c), val_string("\" \"")), wyrm_var_std_sdl_c), val_string("\" \"")), wyrm_var_std_coll_c), val_string("\" \"")), wyrm_var_std_rand_c), val_string("\" \"")), wyrm_var_std_time_c), val_string("\""));
+    Value wyrm_var_all_runtime = val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_add(val_string("\""), wyrm_var_runtime_c), val_string("\" \"")), wyrm_var_arena_c), val_string("\" \"")), wyrm_var_str_c), val_string("\" \"")), wyrm_var_ffi_c), val_string("\" \"")), wyrm_var_std_json_c), val_string("\" \"")), wyrm_var_std_yaml_c), val_string("\" \"")), wyrm_var_std_coll_c), val_string("\" \"")), wyrm_var_std_rand_c), val_string("\" \"")), wyrm_var_std_time_c), val_string("\""));
     Value wyrm_var_inc_flags = val_add(val_add(val_string("-I\""), wyrm_var_lib_path), val_string("\" -D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_DEPRECATE -Wno-deprecated-declarations -Wno-switch -Wno-override-module"));
     Value wyrm_var_clang_cmd = val_string("clang");
     Value wyrm_var_test_res = val_system(val_string("clang --version > nul 2>&1"));
@@ -9023,7 +8582,7 @@ Value wyrm_fn_main() {
     Value wyrm_var_run_res = val_system(wyrm_var_run_cmd);
     val_exit(wyrm_var_run_res);
     }
-    val_print(1, val_add(val_add(val_add(val_add(val_string("[wyrmc 1.0.0] Successfully compiled '"), wyrm_var_source_file), val_string("' -> Native Binary '")), wyrm_var_out_exe), val_string("'")));
+    val_print(1, val_add(val_add(val_add(val_add(val_string("[wyrmc 1.1.0] Successfully compiled '"), wyrm_var_source_file), val_string("' -> Native Binary '")), wyrm_var_out_exe), val_string("'")));
     return val_null();
 }
 

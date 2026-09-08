@@ -6,15 +6,17 @@
 #include <cstdlib>
 #include <cstring>
 #include <cstdio>
+#include <filesystem>
 #include "../../compiler/lexer/lexer.hpp"
 #include "../../compiler/parser/parser.hpp"
 #include "../../compiler/interpreter/interpreter.hpp"
 #include "../../compiler/transpiler/transpiler.hpp"
 
 #ifndef WYRMC_VERSION
-#define WYRMC_VERSION "1.0.0"
+#define WYRMC_VERSION "1.1.0"
 #endif
 
+namespace fs = std::filesystem;
 using namespace wyrm;
 
 int run_native_interpreter(const std::string& filename, const std::vector<std::string>& cli_args) {
@@ -124,6 +126,61 @@ int run_native_compiler(const std::string& filename) {
     return 0;
 }
 
+int run_clean(bool clean_all) {
+    int removed_count = 0;
+    try {
+        for (const auto& entry : fs::directory_iterator(".")) {
+            if (!entry.is_regular_file()) continue;
+            std::string name = entry.path().filename().string();
+            bool should_remove = false;
+
+            if (name == "_wyrm_temp.c") {
+                should_remove = true;
+            } else if (name.size() > 8 && name.substr(name.size() - 8) == "_temp.ll") {
+                should_remove = true;
+            } else if (name.size() > 8 && name.substr(name.size() - 8) == "_run.exe") {
+                should_remove = true;
+            } else if (name.size() > 2 && name.substr(name.size() - 2) == ".o") {
+                should_remove = true;
+            } else if (name.size() > 4 && name.substr(name.size() - 4) == ".obj") {
+                should_remove = true;
+            } else if (clean_all && name.size() > 4 && name.substr(name.size() - 4) == ".exe") {
+                std::string base = name.substr(0, name.size() - 4);
+                if (fs::exists(base + ".wyr") || name == "output.exe" || name == "a.exe") {
+                    should_remove = true;
+                }
+            }
+
+            if (should_remove) {
+                std::error_code ec;
+                if (fs::remove(entry.path(), ec)) {
+                    std::cout << "  Removed: " << name << std::endl;
+                    removed_count++;
+                }
+            }
+        }
+
+        if (fs::exists(".wyrm_cache") && fs::is_directory(".wyrm_cache")) {
+            std::error_code ec;
+            std::uintmax_t n = fs::remove_all(".wyrm_cache", ec);
+            if (n > 0) {
+                std::cout << "  Removed .wyrm_cache directory (" << n << " items)" << std::endl;
+                removed_count += static_cast<int>(n);
+            }
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Clean error: " << e.what() << std::endl;
+        return 1;
+    }
+
+    if (removed_count == 0) {
+        std::cout << "[wyrmc " << WYRMC_VERSION << "] Already clean. No temporary files found." << std::endl;
+    } else {
+        std::cout << "[wyrmc " << WYRMC_VERSION << "] Cleaned " << removed_count << " temporary build file(s)." << std::endl;
+    }
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
     if (argc > 1) {
         std::string arg1 = argv[1];
@@ -134,15 +191,28 @@ int main(int argc, char* argv[]) {
         if (arg1 == "--help" || arg1 == "-h" || arg1 == "help") {
             std::cout << "wyrmc " << WYRMC_VERSION << "\n\n"
                       << "Usage:\n"
-                      << "  wyrmc [command] <file.wyr>\n\n"
+                      << "  wyrmc [command] [options] <file.wyr>\n\n"
                       << "Commands:\n"
                       << "  build <file.wyr>  Compile source file to native binary\n"
                       << "  run <file.wyr>    Run source file (native C++ interpreter)\n"
+                      << "  clean [--all]     Clean temporary build artifacts and cache\n"
                       << "  <file.wyr>        Run source file directly (default)\n\n"
                       << "Options:\n"
+                      << "  --all, -a         Used with clean to remove compiled binaries (.exe)\n"
                       << "  --version, -v     Display compiler/VM version\n"
                       << "  --help, -h        Display help information\n";
             return 0;
+        }
+
+        if (arg1 == "clean") {
+            bool clean_all = false;
+            for (int i = 2; i < argc; ++i) {
+                std::string flag = argv[i];
+                if (flag == "--all" || flag == "-a") {
+                    clean_all = true;
+                }
+            }
+            return run_clean(clean_all);
         }
 
         if (arg1 == "build") {
