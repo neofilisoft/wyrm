@@ -35,7 +35,6 @@ bool try_register(const std::string& module_path, Environment& env);
 void register_ffi(Environment& env);
 void register_json(Environment& env);
 void register_yaml(Environment& env);
-void register_sdl(Environment& env);
 void register_thread(Environment& env);
 void register_collections(Environment& env);
 void register_random(Environment& env);

@@ -23,7 +23,6 @@ extern "C" {
 #include "../../wyrm/lib/wyrm_ffi.h"
 #include "../../wyrm/lib/stdlib/wyrm_std_json.h"
 #include "../../wyrm/lib/stdlib/wyrm_std_yaml.h"
-#include "../../wyrm/lib/stdlib/wyrm_std_sdl.h"
 #include "../../wyrm/lib/stdlib/wyrm_std_collections.h"
 #include "../../wyrm/lib/stdlib/wyrm_std_random.h"
 #include "../../wyrm/lib/stdlib/wyrm_std_time.h"
@@ -103,41 +102,6 @@ void register_yaml(Environment& env) {
     reg(env, "yaml_encode", wrap1(yaml_encode));
 }
 
-/* ============================================================
- * SDL2 module: std.sdl
- * ============================================================ */
-void register_sdl(Environment& env) {
-    reg(env, "sdl_init",           wrap0(sdl_init));
-    reg(env, "sdl_quit",           wrap0(sdl_quit));
-    reg(env, "sdl_ticks",          wrap0(sdl_ticks));
-    reg(env, "sdl_poll_event",     wrap0(sdl_poll_event));
-    reg(env, "sdl_delay",          wrap1(sdl_delay));
-    reg(env, "sdl_destroy_window", wrap1(sdl_destroy_window));
-    reg(env, "sdl_window", [](const std::vector<Value>& args) -> Value {
-        if (args.size() < 3) throw std::runtime_error("sdl_window: expected (title, width, height)");
-        return sdl_window(args[0], args[1], args[2]);
-    });
-    reg(env, "sdl_clear", [](const std::vector<Value>& args) -> Value {
-        if (args.size() < 4) throw std::runtime_error("sdl_clear: expected (win, r, g, b)");
-        return sdl_clear(args[0], args[1], args[2], args[3]);
-    });
-    reg(env, "sdl_present", wrap1(sdl_present));
-    reg(env, "sdl_draw_rect", [](const std::vector<Value>& args) -> Value {
-        if (args.size() < 8) throw std::runtime_error("sdl_draw_rect: expected (win, x, y, w, h, r, g, b)");
-        return sdl_draw_rect(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7]);
-    });
-    reg(env, "sdl_draw_line", [](const std::vector<Value>& args) -> Value {
-        if (args.size() < 8) throw std::runtime_error("sdl_draw_line: expected (win, x1, y1, x2, y2, r, g, b)");
-        return sdl_draw_line(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7]);
-    });
-    // Register SDL event type string constants
-    env.define("SDL_QUIT",        val_string(WYRM_SDL_EVT_QUIT));
-    env.define("SDL_KEYDOWN",     val_string(WYRM_SDL_EVT_KEYDOWN));
-    env.define("SDL_KEYUP",       val_string(WYRM_SDL_EVT_KEYUP));
-    env.define("SDL_MOUSEMOTION", val_string(WYRM_SDL_EVT_MOUSEMOTION));
-    env.define("SDL_MOUSEDOWN",   val_string(WYRM_SDL_EVT_MOUSEDOWN));
-    env.define("SDL_MOUSEUP",     val_string(WYRM_SDL_EVT_MOUSEUP));
-}
 
 /* ============================================================
  * Threading module: std.thread
@@ -322,14 +286,22 @@ void register_time(Environment& env) {
 bool try_register(const std::string& module_path, Environment& env) {
     static const std::unordered_map<std::string,
         void(*)(Environment&)> dispatch_table = {
+        // Canonical paths
         { "std.ffi",         register_ffi         },
         { "std.json",        register_json        },
         { "std.yaml",        register_yaml        },
-        { "std.sdl",         register_sdl         },
         { "std.thread",      register_thread      },
         { "std.collections", register_collections },
         { "std.random",      register_random      },
         { "std.time",        register_time        },
+        // Dual-Aliasing short names
+        { "ffi",             register_ffi         },
+        { "json",            register_json        },
+        { "yaml",            register_yaml        },
+        { "thread",          register_thread      },
+        { "collections",     register_collections },
+        { "random",          register_random      },
+        { "time",            register_time        },
     };
     auto it = dispatch_table.find(module_path);
     if (it == dispatch_table.end()) return false;
