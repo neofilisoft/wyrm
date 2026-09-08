@@ -14,7 +14,7 @@ VERSION_FILE="$SCRIPT_DIR/VERSION"
 if [ -f "$VERSION_FILE" ]; then
     WYRM_VERSION="$(cat "$VERSION_FILE" | tr -d '[:space:]')"
 else
-    WYRM_VERSION="1.0.0"
+    WYRM_VERSION="1.1.0"
 fi
 
 INSTALL_ROOT="$HOME/.wyrm"
@@ -80,7 +80,6 @@ $CC -std=c11 -O2 -c wyrm/lib/wyrm_str.c -o wyrm_str.o -Iwyrm/lib
 $CC -std=c11 -O2 -c wyrm/lib/wyrm_ffi.c -o wyrm_ffi.o -Iwyrm/lib
 $CC -std=c11 -O2 -c wyrm/lib/stdlib/wyrm_std_json.c -o wyrm_std_json.o -Iwyrm/lib
 $CC -std=c11 -O2 -c wyrm/lib/stdlib/wyrm_std_yaml.c -o wyrm_std_yaml.o -Iwyrm/lib
-$CC -std=c11 -O2 -c wyrm/lib/stdlib/wyrm_std_sdl.c -o wyrm_std_sdl.o -Iwyrm/lib
 $CC -std=c11 -O2 -c wyrm/lib/stdlib/wyrm_std_collections.c -o wyrm_std_collections.o -Iwyrm/lib
 $CC -std=c11 -O2 -c wyrm/lib/stdlib/wyrm_std_random.c -o wyrm_std_random.o -Iwyrm/lib
 $CC -std=c11 -O2 -c wyrm/lib/stdlib/wyrm_std_time.c -o wyrm_std_time.o -Iwyrm/lib
@@ -96,7 +95,7 @@ $CXX wyrm/src/wyrmc.cpp \
     compiler/transpiler/transpiler.cpp \
     wyrm_core.o wyrm_arena.o wyrm_str.o \
     wyrm_ffi.o wyrm_std_json.o wyrm_std_yaml.o \
-    wyrm_std_sdl.o wyrm_std_collections.o wyrm_std_random.o wyrm_std_time.o \
+    wyrm_std_collections.o wyrm_std_random.o wyrm_std_time.o \
     -o wyrmc_bootstrap -std=c++20 -O2
 
 # 5. Build self-hosted compiler stages

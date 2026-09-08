@@ -1,6 +1,6 @@
 # Wyrm Language
 [![License: MIT](https://img.shields.io/badge/License-MIT-333333.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0-B10C1A)](https://github.com/neofilisoft/wyrm/releases)
+[![Version](https://img.shields.io/badge/version-1.1.0-B10C1A)](https://github.com/neofilisoft/wyrm/releases)
 
 Wyrm (`.wyr`) is a static systems programming language with a self-hosted compiler and gradual static typing. The main toolchain consists of `wyrmc` (the self-hosted compiler & runner written in Wyrm) and `wyrpkg` (the package manager).
 
@@ -15,16 +15,16 @@ Wyrm (`.wyr`) is a static systems programming language with a self-hosted compil
 
 ## Features
 
-- **Self-Hosted Compiler (1.0.0)**: `wyrmc` is self-hosted in pure Wyrm (`compiler/wyrmc.wyr`) and achieves Stage 2 self-compilation.
-- **Gradual / Hybrid Static Typing (1.0.0)**:
+- **Self-Hosted Compiler (1.1.0)**: `wyrmc` is self-hosted in pure Wyrm (`compiler/wyrmc.wyr`) and achieves Stage 2 self-compilation.
+- **Gradual / Hybrid Static Typing**:
   - Annotate variables: `var count: i64 = 0`, `var byte_val: u8 = 255`, `var ratio: f32 = 3.14`, `var flag: bool = true` (emits unboxed LLVM IR allocas, direct CPU registers, and native machine instructions)
   - Supported primitive types: `i32`, `i64`, `u8`, `f32`, `f64`, `bool`
   - Annotate functions: `fn add(a: i64, b: i64): i64` (or `-> i64`)
   - Annotate structs: `struct Point { x: i32, y: i32 }`
   - Unannotated variables seamlessly infer or use the reference-counted dynamic `Value` model without breaking backward compatibility
-- **Rust/Clang-Style Visual Diagnostics (1.0.0)**:
+- **Rust/Clang-Style Visual Diagnostics**:
   - Compiler diagnostics render formatted error reports with standard error codes (`error[E0001]`, `error[E0002]`), source file snippets, line and column numbers, and underline carets (`^`).
-- **Ownership & Arena Allocation (1.0.0)**:
+- **Ownership & Arena Allocation**:
   - High-performance memory arena allocation via `arena buf(size)`, `buf.alloc(bytes)`, and `buf.reset()`
   - Scoped resource ownership with automatic drop glue releasing nested resources upon exiting blocks and loops
 - Function declarations with `fn`
@@ -59,20 +59,21 @@ Wyrm (`.wyr`) is a static systems programming language with a self-hosted compil
 - Loops: `do` / `til` (canonical loop syntax: `do { ... } til <condition>`)
 - Arrays: literals, indexing, slicing, and index assignment (supporting map/json string keys `obj["key"]`)
 - Module imports: `use module.wyr;` or `use std.X;` (semicolon required)
+- Granular Submodule Imports: `use pkg;` imports root module, while `use pkg.submodule;` selectively loads specific submodules without pulling in unrelated code.
 - Comments: `//`, `/* */`, `///`
 - Semicolons are optional at most statement boundaries; `use` statements require a trailing `;`
 - `fn main()` is the program entry point and is called automatically (like C)
 - Ownership and RAII direction with `owned`, `unsafe`, `arena` allocation, and raw memory APIs (`malloc`, `free`, `realloc`)
 - 15 built-in type conversion and string operations: `str`, `split`, `join`, `trim`, `upper`, `lower`, `contains`, `replace`, `starts_with`, `ends_with`, `char_at`, `ord_val`, `chr_val`, `to_bytes`, `from_bytes`
-- **Standard Library Modules** (v1.0.0):
-  - `std.time`: High-resolution monotonic timers (Windows QPC / POSIX CLOCK_MONOTONIC), Unix epoch wall-clock timestamps, sleep, and date/time formatting
-  - `std.random`: PRNG (Xoshiro256**), CSPRNG (OS Cryptographic API), and TRNG (CPU Hardware RDRAND with OS entropy fallback)
-  - `std.sdl`: Windowing, 2D hardware rendering, keyboard & mouse event loop
-  - `std.ffi`: Foreign Function Interface (dynamic shared library loading via `LoadLibrary`/`dlopen`)
-  - `std.thread`: Multithreading via OS threads, worker spawning, and mutex synchronization
-  - `std.json`: RFC 8259 JSON parser & encoder with object dictionary indexing
-  - `std.yaml`: Block-style YAML parser & encoder
-  - `std.collections`: High-performance HashMaps and Sets
+- **Standard Library Modules & Dual-Aliasing (v1.1.0)**:
+  - Supports short aliases (`use time;`, `use random;`, `use json;`, etc.) alongside canonical namespaces (`use std.time;`, `use std.random;`)
+  - `time` / `std.time`: High-resolution monotonic timers (Windows QPC / POSIX CLOCK_MONOTONIC), Unix epoch wall-clock timestamps, sleep, and date/time formatting
+  - `random` / `std.random`: PRNG (Xoshiro256**), CSPRNG (OS Cryptographic API), and TRNG (CPU Hardware RDRAND with OS entropy fallback)
+  - `ffi` / `std.ffi`: Foreign Function Interface (dynamic shared library loading via `LoadLibrary`/`dlopen`)
+  - `thread` / `std.thread`: Multithreading via OS threads, worker spawning, and mutex synchronization
+  - `json` / `std.json`: RFC 8259 JSON parser & encoder with object dictionary indexing
+  - `yaml` / `std.yaml`: Block-style YAML parser & encoder
+  - `collections` / `std.collections`: High-performance HashMaps and Sets
 
 ## Native Toolchain & Bootstrap
 
@@ -127,6 +128,16 @@ Run a Wyrm program directly via the VM interpreter:
 wyrmc run examples/hello.wyr
 ```
 
+Clean temporary build files, intermediate IR, and caches:
+
+```bash
+# Clean temporary build artifacts (*_temp.ll, _wyrm_temp.c, *.o) and cache
+wyrmc clean
+
+# Clean artifacts and remove compiled project executables
+wyrmc clean --all
+```
+
 ## Package Manager (`wyrpkg`)
 
 `wyrpkg` is a project and package manager in the style of Cargo with a Git/GitHub-based distributed Public Registry:
@@ -174,7 +185,7 @@ entry = "main.wyr"
 
 - `wyrm/src/`: native bootstrap compiler (`bootstrap.c`), `wyrmc.cpp`, `wyrpkg.cpp`
 - `wyrm/lib/`: C runtime library (`wyrm_core.c/h`, `wyrm_str.c/h`, `wyrm_arena.c/h`, `wyrm_ffi.c/h`) linked by compiled programs
-- `wyrm/lib/stdlib/`: native C backends for standard library modules (`wyrm_std_sdl`, `wyrm_std_json`, `wyrm_std_yaml`, `wyrm_std_collections`)
+- `wyrm/lib/stdlib/`: native C backends for standard library modules (`wyrm_std_json`, `wyrm_std_yaml`, `wyrm_std_collections`)
 - `compiler/`: self-hosted Wyrm compiler source (`wyrmc.wyr`) and C++ bootstrap front-end (lexer, parser, interpreter, transpiler, and `stdlib_setup`)
 - `examples/`: runnable Wyrm programs
 - `extension/`: VS Code syntax highlighting extension for Wyrm (`.wyr`)
