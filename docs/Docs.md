@@ -9,7 +9,7 @@ This document describes the Wyrm language design and architecture implemented in
 - **`wyrmc`**: The primary self-hosted compiler and execution runner implemented in pure Wyrm ([compiler/wyrmc.wyr](file:///c:/Users/BEST/Desktop/wyrm/compiler/wyrmc.wyr)). Supports ahead-of-time native binary compilation (`wyrmc build file.wyr`) and instant runner mode (`wyrmc run file.wyr`).
 - **`wyrpkg`**: The project and package manager (Cargo-inspired workflow: `new`, `init`, `build`, `run`, `install`, `update`, `publish`, `remove`, `list`).
 - **AOT Codegen Path**: LLVM IR compilation directly to native machine binaries via Clang / LLVM toolchain.
-- **Stage 0 Bootstrap Toolchain**: Native C11 / C++20 toolchain built via [bootstrap.c](file:///c:/Users/BEST/Desktop/wyrm/wyrm/scr/bootstrap.c) to build Stage 0 and bootstrap the self-hosted compiler.
+- **Stage 0 Bootstrap Toolchain**: Native C11 / C++20 toolchain built via [bootstrap.c](file:///c:/Users/BEST/Desktop/wyrm/wyrm/src/bootstrap.c) to build Stage 0 and bootstrap the self-hosted compiler.
 - **Self-Hosting Verification**: `wyrmc` achieves Stage 2 self-compilation (`wyrmc_stage1.exe build compiler/wyrmc.wyr -o wyrmc.exe`).
 
 ---
@@ -422,7 +422,7 @@ version = "0.1.0"
 entry = "main.wyr"
 
 [dependencies]
-# std_time = "3.2.1"
+# std_time = "1.0.0"
 ```
 
 ---
@@ -444,7 +444,7 @@ powershell -File install.ps1
 
 ### Windows C11 Self-Contained Bootstrap Driver
 ```bash
-gcc wyrm/scr/bootstrap.c -o bootstrap.exe -std=c11 -O2
+gcc wyrm/src/bootstrap.c -o bootstrap.exe -std=c11 -O2
 ./bootstrap.exe
 ```
 
