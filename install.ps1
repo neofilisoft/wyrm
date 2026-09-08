@@ -12,6 +12,7 @@ $InstallRoot  = Join-Path $HOME ".wyrm"
 $WyrmcDir     = Join-Path $InstallRoot "wyrmc"
 $WyrpkgDir    = Join-Path $InstallRoot "wyrpkg"
 $PackagesDir  = Join-Path $InstallRoot "packages\wyrmlang"
+$LibraryDir   = Join-Path $InstallRoot "library"
 
 if ((Test-Path "C:\Program Files\LLVM\bin") -and ($env:PATH -notlike "*LLVM\bin*")) {
     $env:PATH = "C:\Program Files\LLVM\bin;$env:PATH"
@@ -22,13 +23,18 @@ Push-Location $ScriptDir
 try {
     # Create destination directories first
     # This is required so packages are in place before self-hosted compiler runs
-    foreach ($dir in @($InstallRoot, $WyrmcDir, $WyrpkgDir, $PackagesDir)) {
+    foreach ($dir in @($InstallRoot, $WyrmcDir, $WyrpkgDir, $PackagesDir, $LibraryDir)) {
         if (!(Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
     }
 
     # Copy Wyrm package runtime files (standard library) to PackagesDir first
     # because the self-hosted compiler relies on these C files at ~/.wyrm/packages/wyrmlang/lib/ during AOT build
     Copy-Item -Path "wyrm\*" -Destination $PackagesDir -Recurse -Force
+
+    # Copy third-party libraries (e.g. glsl) to LibraryDir if available
+    if (Test-Path "library") {
+        Copy-Item -Path "library\*" -Destination $LibraryDir -Recurse -Force
+    }
 
     # Compile runtime objects
     gcc -std=c11 -O2 -c wyrm\lib\wyrm_core.c  -o wyrm_core.o  -Iwyrm\lib
@@ -40,9 +46,10 @@ try {
     gcc -std=c11 -O2 -c wyrm\lib\stdlib\wyrm_std_sdl.c  -o wyrm_std_sdl.o  -Iwyrm\lib
     gcc -std=c11 -O2 -c wyrm\lib\stdlib\wyrm_std_collections.c -o wyrm_std_collections.o -Iwyrm\lib
     gcc -std=c11 -O2 -c wyrm\lib\stdlib\wyrm_std_random.c -o wyrm_std_random.o -Iwyrm\lib
+    gcc -std=c11 -O2 -c wyrm\lib\stdlib\wyrm_std_time.c   -o wyrm_std_time.o   -Iwyrm\lib
 
     # Compile temporary C++ bootstrap compiler
-    g++ wyrm\scr\wyrmc.cpp `
+    g++ wyrm\src\wyrmc.cpp `
         compiler\lexer\lexer.cpp `
         compiler\parser\parser.cpp `
         compiler\interpreter\interpreter.cpp `
@@ -51,7 +58,7 @@ try {
         compiler\transpiler\transpiler.cpp `
         wyrm_core.o wyrm_arena.o wyrm_str.o `
         wyrm_ffi.o wyrm_std_json.o wyrm_std_yaml.o `
-        wyrm_std_sdl.o wyrm_std_collections.o wyrm_std_random.o `
+        wyrm_std_sdl.o wyrm_std_collections.o wyrm_std_random.o wyrm_std_time.o `
         -o wyrmc_bootstrap.exe -std=c++20 -O2
 
     # Ensure no lingering compiler instances lock the binary
@@ -81,10 +88,10 @@ try {
     Remove-Item "compiler\wyrmc_temp.ll" -ErrorAction SilentlyContinue
 
     # Compile wyrpkg -> .wyrm\wyrpkg\wyrpkg.exe
-    g++ wyrm\scr\wyrpkg.cpp -o wyrpkg.exe -std=c++20 -O2
+    g++ wyrm\src\wyrpkg.cpp -o wyrpkg.exe -std=c++20 -O2
 
     # Compile bootstrap helper
-    gcc wyrm\scr\bootstrap.c -o bootstrap.exe -std=c11 -O2
+    gcc wyrm\src\bootstrap.c -o bootstrap.exe -std=c11 -O2
 
     # Clean up temporary object files and bootstrap executables
     Remove-Item wyrm_core.o, wyrm_arena.o, wyrm_str.o, wyrm_ffi.o, wyrm_std_json.o, wyrm_std_yaml.o, wyrm_std_sdl.o, wyrm_std_collections.o, wyrm_std_random.o -ErrorAction SilentlyContinue
@@ -101,6 +108,21 @@ try {
 
     Write-Host "  wyrmc  -> $WyrmcDir\wyrmc.exe"  -ForegroundColor Cyan
     Write-Host "  wyrpkg -> $WyrpkgDir\wyrpkg.exe" -ForegroundColor Cyan
+
+    # Install/update IDE syntax extensions (VS Code, Antigravity IDE, Cursor)
+    $extDirs = @(
+        (Join-Path $env:USERPROFILE ".vscode\extensions"),
+        (Join-Path $env:USERPROFILE ".antigravity-ide\extensions"),
+        (Join-Path $env:USERPROFILE ".cursor\extensions")
+    )
+    foreach ($ed in $extDirs) {
+        if (Test-Path $ed) {
+            Get-ChildItem $ed -Directory -Filter "neofilisoft.wyrm-syntax-*" | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+            $destExt = Join-Path $ed "neofilisoft.wyrm-syntax-$WyrmVersion"
+            Copy-Item "extension" -Destination $destExt -Recurse -Force
+            Write-Host "  syntax -> $destExt" -ForegroundColor Cyan
+        }
+    }
 } finally {
     Pop-Location
 }
