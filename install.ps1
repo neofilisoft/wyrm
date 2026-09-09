@@ -122,6 +122,22 @@ try {
             Write-Host "  syntax -> $destExt" -ForegroundColor Cyan
         }
     }
+
+    $vsixPath = Join-Path "extension" "wyrm-syntax-$WyrmVersion.vsix"
+    if (Test-Path $vsixPath) {
+        if (Get-Command code -ErrorAction SilentlyContinue) {
+            try {
+                code --install-extension $vsixPath --force | Out-Null
+                Write-Host "  Registered in VS Code via code CLI" -ForegroundColor Green
+            } catch {}
+        }
+        if (Get-Command cursor -ErrorAction SilentlyContinue) {
+            try {
+                cursor --install-extension $vsixPath --force | Out-Null
+                Write-Host "  Registered in Cursor via cursor CLI" -ForegroundColor Green
+            } catch {}
+        }
+    }
 } finally {
     Pop-Location
 }
