@@ -24,11 +24,6 @@ if (!(Test-Path $wyrpkgSrc)) { $wyrpkgSrc = Join-Path $RootDir "wyrpkg.exe" }
 Copy-Item $wyrmcSrc -Destination (Join-Path $StageDir "bin\wyrmc.exe") -Force
 Copy-Item $wyrpkgSrc -Destination (Join-Path $StageDir "bin\wyrpkg.exe") -Force
 
-# Copy SDL2.dll if present
-$sdlSrc = Join-Path $RootDir "SDL2.dll"
-if (Test-Path $sdlSrc) {
-    Copy-Item $sdlSrc -Destination (Join-Path $StageDir "bin\SDL2.dll") -Force
-}
 
 # 2. Copy C runtime and standard library packages
 Copy-Item (Join-Path $RootDir "wyrm\lib\*") -Destination (Join-Path $StageDir "packages\wyrmlang\lib") -Recurse -Force
@@ -53,14 +48,18 @@ if not exist "%TARGET%\packages\wyrmlang" mkdir "%TARGET%\packages\wyrmlang"
 
 copy /y "%~dp0bin\wyrmc.exe" "%TARGET%\wyrmc\" >nul
 copy /y "%~dp0bin\wyrpkg.exe" "%TARGET%\wyrpkg\" >nul
-if exist "%~dp0bin\SDL2.dll" copy /y "%~dp0bin\SDL2.dll" "%TARGET%\wyrmc\" >nul
 xcopy /s /e /y /q "%~dp0packages\wyrmlang\*" "%TARGET%\packages\wyrmlang\" >nul
-
 if exist "%USERPROFILE%\.vscode\extensions" (
     xcopy /s /e /y /q "%~dp0extension\*" "%USERPROFILE%\.vscode\extensions\neofilisoft.wyrm-syntax-$Version\" >nul
 )
 if exist "%USERPROFILE%\.antigravity-ide\extensions" (
     xcopy /s /e /y /q "%~dp0extension\*" "%USERPROFILE%\.antigravity-ide\extensions\neofilisoft.wyrm-syntax-$Version\" >nul
+)
+where code >nul 2>nul
+if %ERRORLEVEL% equ 0 (
+    if exist "%~dp0extension\wyrm-syntax-$Version.vsix" (
+        call code --install-extension "%~dp0extension\wyrm-syntax-$Version.vsix" --force >nul 2>nul
+    )
 )
 
 powershell -NoProfile -Command "[Environment]::SetEnvironmentVariable('PATH', [Environment]::GetEnvironmentVariable('PATH', 'User') + ';%TARGET%\wyrmc;%TARGET%\wyrpkg', 'User')" >nul 2>&1
