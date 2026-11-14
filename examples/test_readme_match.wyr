@@ -1,0 +1,18 @@
+// Mirrors the enum and match syntax documented in README.md.
+enum Shape {
+    Circle(radius),
+    Rect(width, height),
+}
+
+fn main() {
+    var shape = Circle(5.0)
+    var area = 0.0
+
+    match shape {
+        case Circle(radius) -> area = 3.14159 * radius * radius
+        case Rect(width, height) -> area = width * height
+        default -> area = -1.0
+    }
+
+    print("area:", area)
+}

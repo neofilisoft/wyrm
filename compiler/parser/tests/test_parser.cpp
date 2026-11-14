@@ -302,6 +302,33 @@ void test_parse_type_annotations() {
     std::cout << "test_parse_type_annotations passed!" << std::endl;
 }
 
+void test_parse_readme_match_syntax() {
+    std::cout << "Running test_parse_readme_match_syntax..." << std::endl;
+    std::string_view code =
+        "enum Shape { Circle(radius), Rect(width, height) }\n"
+        "var s = Circle(5.0)\n"
+        "match s {\n"
+        "    case Circle(r) -> print(r)\n"
+        "    case Rect(w, h) -> print(w * h)\n"
+        "    default -> print(\"Unknown shape\")\n"
+        "}\n";
+    Lexer lexer(code);
+    Parser parser(lexer.tokenize());
+    auto statements = parser.parse();
+
+    assert(statements.size() == 3);
+    auto* match = dynamic_cast<MatchNode*>(statements[2].get());
+    assert(match != nullptr);
+    assert(match->arms.size() == 3);
+    assert(match->arms[0].variant_name == "Circle");
+    assert(match->arms[0].bindings.size() == 1);
+    assert(match->arms[0].body.size() == 1);
+    assert(match->arms[2].variant_name == "_");
+    assert(match->arms[2].body.size() == 1);
+
+    std::cout << "test_parse_readme_match_syntax passed!" << std::endl;
+}
+
 int main() {
     std::cout << "=== Running Wyrm Parser Native C++20 Tests ===" << std::endl;
     test_parse_arithmetic();
@@ -313,6 +340,7 @@ int main() {
     test_parse_unsafe_owned();
     test_parse_struct();
     test_parse_type_annotations();
+    test_parse_readme_match_syntax();
     std::cout << "=== All Parser Tests Passed Successfully ===" << std::endl;
     return 0;
 }

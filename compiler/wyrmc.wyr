@@ -1,4 +1,4 @@
-// Wyrm Compiler & LLVM IR Generator (wyrmc) v3.2.0
+// Wyrm Compiler & LLVM IR Generator (wyrmc) 1.2.0
 // Written entirely in Wyrm for self-hosting.
 
 var token_pos = [0]
@@ -34,7 +34,7 @@ fn tokenize(source) {
     var line = 1
     var col = 1
 
-    repeat {
+    do {
         if pos >= len_src { break }
         var c = char_at(source, pos)
 
@@ -56,7 +56,7 @@ fn tokenize(source) {
                 }
             }
             if is_comment {
-                repeat {
+                do {
                     pos = pos + 1
                     col = col + 1
                     if pos >= len_src { break }
@@ -66,7 +66,7 @@ fn tokenize(source) {
                 if is_alpha(c) {
                     var start_col = col
                     var val = ""
-                    repeat {
+                    do {
                         val = val + c
                         pos = pos + 1
                         col = col + 1
@@ -75,7 +75,7 @@ fn tokenize(source) {
                     } til not is_alphanum(c) or pos >= len_src
                     
                     var type = "IDENTIFIER"
-                    if val == "use" or val == "fn" or val == "var" or val == "dec" or val == "owned" or val == "arena" or val == "if" or val == "elif" or val == "else" or val == "repeat" or val == "do" or val == "til" or val == "struct" or val == "unsafe" or val == "return" or val == "break" or val == "continue" or val == "print" or val == "and" or val == "or" or val == "not" or val == "true" or val == "false" or val == "null" or val == "try" or val == "catch" {
+                    if val == "use" or val == "fn" or val == "var" or val == "dec" or val == "owned" or val == "arena" or val == "if" or val == "elif" or val == "else" or val == "repeat" or val == "do" or val == "til" or val == "struct" or val == "unsafe" or val == "return" or val == "break" or val == "continue" or val == "print" or val == "and" or val == "or" or val == "not" or val == "true" or val == "false" or val == "null" or val == "try" or val == "catch" or val == "weak" {
                         type = "KEYWORD"
                     }
                     append(tokens, [type, val, line, start_col])
@@ -83,7 +83,7 @@ fn tokenize(source) {
                     var start_col = col
                     var val = ""
                     var has_dot = false
-                    repeat {
+                    do {
                         if c == "." { has_dot = true }
                         val = val + c
                         pos = pos + 1
@@ -98,7 +98,7 @@ fn tokenize(source) {
                     pos = pos + 1
                     col = col + 1
                     var closed = false
-                    repeat {
+                    do {
                         if pos >= len_src { break }
                         c = char_at(source, pos)
                         if c == "\"" {
@@ -165,7 +165,7 @@ fn tokenize(source) {
 fn contains_val(lst, val) {
     var i = 0
     var l = len(lst)
-    repeat {
+    do {
         if i >= l { break }
         if lst[i] == val { return true }
         i = i + 1
@@ -219,7 +219,7 @@ fn report_diagnostic(err_code, title, line_no, col_no, hint_msg) {
         
         var pad = "   | "
         var c = 1
-        repeat {
+        do {
             if c >= col_no { break }
             pad = pad + " "
             c = c + 1
@@ -245,7 +245,7 @@ fn parse_tokens(tokens) {
     g_tokens[0] = tokens
     token_pos[0] = 0
     var statements = []
-    repeat {
+    do {
         var tok = current()
         if tok[0] == "EOF" { break }
         if tok[0] == "NEWLINE" {
@@ -271,7 +271,7 @@ fn parse_statement_inner() {
         if tok[1] == "use" {
             advance()
             var path = ""
-            repeat {
+            do {
                 var cur_tok = current()
                 if cur_tok[0] == "EOF" or cur_tok[0] == "NEWLINE" or cur_tok[1] == ";" { break }
                 path = path + cur_tok[1]
@@ -286,7 +286,7 @@ fn parse_statement_inner() {
             expect("DELIMITER", "(")
             var params = []
             if cur_val() != ")" {
-                repeat {
+                do {
                     var p_name = cur_val()
                     advance()
                     var p_type = ""
@@ -295,7 +295,9 @@ fn parse_statement_inner() {
                         p_type = cur_val()
                         advance()
                     }
-                    append(params, p_name)
+                    // Store [p_name, p_type] so codegen can use type annotations.
+                    // If no annotation, p_type is "" meaning Dynamic.
+                    append(params, [p_name, p_type])
                     if cur_val() == "," {
                         advance()
                     } else { break }
@@ -315,7 +317,7 @@ fn parse_statement_inner() {
             }
             expect("DELIMITER", "{")
             var body = []
-            repeat {
+            do {
                 if cur_val() == "}" { break }
                 if cur_type() == "NEWLINE" {
                     advance()
@@ -357,7 +359,7 @@ fn parse_statement_inner() {
             expect("DELIMITER", "{")
             var fields = []
             var methods = []
-            repeat {
+            do {
                 if cur_val() == "}" { break }
                 if cur_type() == "NEWLINE" {
                     advance()
@@ -369,8 +371,14 @@ fn parse_statement_inner() {
                     var f_type = ""
                     if cur_val() == ":" {
                         advance()
-                        f_type = cur_val()
-                        advance()
+                        if cur_val() == "weak" {
+                            advance()
+                            f_type = "weak " + cur_val()
+                            advance()
+                        } else {
+                            f_type = cur_val()
+                            advance()
+                        }
                     }
                     append(fields, f_name)
                     if cur_val() == "," or cur_val() == ";" { advance() }
@@ -384,7 +392,7 @@ fn parse_statement_inner() {
             var cond = parse_expression()
             expect("DELIMITER", "{")
             var then_body = []
-            repeat {
+            do {
                 if cur_val() == "}" { break }
                 if cur_type() == "NEWLINE" {
                     advance()
@@ -394,13 +402,13 @@ fn parse_statement_inner() {
             } til false
             expect("DELIMITER", "}")
             var elif_clauses = []
-            repeat {
+            do {
                 if cur_val() == "elif" {
                     advance()
                     var elif_cond = parse_expression()
                     expect("DELIMITER", "{")
                     var elif_body = []
-                    repeat {
+                    do {
                         if cur_val() == "}" { break }
                         if cur_type() == "NEWLINE" {
                             advance()
@@ -416,7 +424,7 @@ fn parse_statement_inner() {
             if cur_val() == "else" {
                 advance()
                 expect("DELIMITER", "{")
-                repeat {
+                do {
                     if cur_val() == "}" { break }
                     if cur_type() == "NEWLINE" {
                         advance()
@@ -428,11 +436,14 @@ fn parse_statement_inner() {
             }
             return ["If", cond, then_body, elif_clauses, else_body]
         }
-        if tok[1] == "repeat" or tok[1] == "do" {
+        if tok[1] == "repeat" {
+            report_diagnostic("E0010", "'repeat' loop syntax has been removed. Use 'do { ... } til <condition>' instead", tok[2], tok[3], "replace 'repeat' with 'do'")
+        }
+        if tok[1] == "do" {
             advance()
             expect("DELIMITER", "{")
             var body = []
-            repeat {
+            do {
                 if cur_val() == "}" { break }
                 if cur_type() == "NEWLINE" {
                     advance()
@@ -449,7 +460,7 @@ fn parse_statement_inner() {
             advance()
             expect("DELIMITER", "{")
             var try_body = []
-            repeat {
+            do {
                 if cur_val() == "}" { break }
                 if cur_type() == "NEWLINE" {
                     advance()
@@ -463,7 +474,7 @@ fn parse_statement_inner() {
             advance()
             expect("DELIMITER", "{")
             var catch_body = []
-            repeat {
+            do {
                 if cur_val() == "}" { break }
                 if cur_type() == "NEWLINE" {
                     advance()
@@ -478,7 +489,7 @@ fn parse_statement_inner() {
             advance()
             expect("DELIMITER", "{")
             var body = []
-            repeat {
+            do {
                 if cur_val() == "}" { break }
                 if cur_type() == "NEWLINE" {
                     advance()
@@ -516,7 +527,7 @@ fn parse_statement_inner() {
             expect("DELIMITER", "(")
             var exprs = []
             if cur_val() != ")" {
-                repeat {
+                do {
                     append(exprs, parse_expression())
                     if cur_val() == "," {
                         advance()
@@ -550,7 +561,7 @@ fn parse_expression() {
 
 fn parse_catch() {
     var node = parse_logical_or()
-    repeat {
+    do {
         var tok = current()
         if tok[0] == "KEYWORD" and tok[1] == "catch" {
             advance()
@@ -563,7 +574,7 @@ fn parse_catch() {
 
 fn parse_logical_or() {
     var node = parse_logical_and()
-    repeat {
+    do {
         var tok = current()
         if tok[0] == "KEYWORD" and (tok[1] == "or" or tok[1] == "||") {
             advance()
@@ -576,7 +587,7 @@ fn parse_logical_or() {
 
 fn parse_logical_and() {
     var node = parse_equality()
-    repeat {
+    do {
         var tok = current()
         if tok[0] == "KEYWORD" and (tok[1] == "and" or tok[1] == "&&") {
             advance()
@@ -589,7 +600,7 @@ fn parse_logical_and() {
 
 fn parse_equality() {
     var node = parse_comparison()
-    repeat {
+    do {
         var tok = current()
         if tok[0] == "OPERATOR" and (tok[1] == "==" or tok[1] == "!=") {
             advance()
@@ -602,7 +613,7 @@ fn parse_equality() {
 
 fn parse_comparison() {
     var node = parse_addition_subtraction()
-    repeat {
+    do {
         var tok = current()
         if tok[0] == "OPERATOR" and (tok[1] == "<" or tok[1] == ">" or tok[1] == "<=" or tok[1] == ">=") {
             advance()
@@ -615,7 +626,7 @@ fn parse_comparison() {
 
 fn parse_addition_subtraction() {
     var node = parse_multiplication_division()
-    repeat {
+    do {
         var tok = current()
         if tok[0] == "OPERATOR" and (tok[1] == "+" or tok[1] == "-") {
             advance()
@@ -628,7 +639,7 @@ fn parse_addition_subtraction() {
 
 fn parse_multiplication_division() {
     var node = parse_power()
-    repeat {
+    do {
         var tok = current()
         if tok[0] == "OPERATOR" and (tok[1] == "*" or tok[1] == "/" or tok[1] == "//" or tok[1] == "%") {
             advance()
@@ -641,7 +652,7 @@ fn parse_multiplication_division() {
 
 fn parse_power() {
     var node = parse_unary()
-    repeat {
+    do {
         var tok = current()
         if tok[0] == "OPERATOR" and tok[1] == "**" {
             advance()
@@ -654,6 +665,11 @@ fn parse_power() {
 
 fn parse_unary() {
     var tok = current()
+    if tok[0] == "KEYWORD" and tok[1] == "weak" {
+        advance()
+        var expr = parse_unary()
+        return ["WeakRef", expr]
+    }
     if (tok[0] == "OPERATOR" and (tok[1] == "not" or tok[1] == "!" or tok[1] == "-" or tok[1] == "+")) or (tok[0] == "KEYWORD" and tok[1] == "not") {
         advance()
         var expr = parse_unary()
@@ -702,7 +718,7 @@ fn parse_primary() {
             advance()
             var args = []
             if cur_val() != ")" {
-                repeat {
+                do {
                     append(args, parse_expression())
                     if cur_val() == "," {
                         advance()
@@ -717,7 +733,10 @@ fn parse_primary() {
             advance()
             if cur_val() == ":" {
                 advance()
-                var end = parse_expression()
+                var end = null
+                if cur_val() != "]" {
+                    end = parse_expression()
+                }
                 expect("DELIMITER", "]")
                 return ["Index", ["Identifier", name], ["Slice", null, end]]
             }
@@ -752,7 +771,7 @@ fn parse_primary() {
                 }
                 var args = []
                 if cur_val() != ")" {
-                    repeat {
+                    do {
                         append(args, parse_expression())
                         if cur_val() == "," {
                             advance()
@@ -776,7 +795,7 @@ fn parse_primary() {
         advance()
         var elements = []
         if cur_val() != "]" {
-            repeat {
+            do {
                 append(elements, parse_expression())
                 if cur_val() == "," {
                     advance()
@@ -806,8 +825,25 @@ var in_function = [false]
 var in_unsafe = [false]
 var has_main_def = [false]
 var declared_globals = [[]]
+
+// Temporary Slot Reuse Pool
+// Instead of allocating a fresh %struct.Value slot for every sub-expression
+// (which causes thousands of alloca instructions per function and explodes
+// LLVM IR size / Clang compile time), we maintain a simple stack-depth counter.
+// Rules:
+//   1. acquire_temp() - grabs the next available slot at the current depth
+//      and bumps the high-water mark (g_temp_max_used) if needed.
+//   2. release_temp(reg) - returns the slot to the pool, but ONLY if reg is
+//      actually a temporary (%tmp_*). Named variables (%wyrm_var_*, @wyrm_var_*)
+//      are never touched.
+//   3. reset_temp_statement() - called at every top-level statement boundary
+//      so that each statement reuses the same pool from depth 0 upward.
+// At FuncDef end, exactly g_temp_max_used[0] alloca instructions are emitted.
+var g_temp_stack_top = [0]
+var g_temp_max_used = [0]
 var emitted_globals = [[]]
 var declared_locals = [[]]
+var g_func_owned = [[]]
 var constants = []
 var g_loop_breaks = [[]]
 var g_loop_continues = [[]]
@@ -819,7 +855,7 @@ var global_var_types = []
 fn has_dot(s) {
     var i = 0
     var l = len(s)
-    repeat {
+    do {
         if i >= l { break }
         if char_at(s, i) == "." { return true }
         i = i + 1
@@ -1145,7 +1181,7 @@ fn gen_double_expr(node) { return gen_unboxed_expr(node, "f64") }
 fn get_var_type(name) {
     var l = len(current_local_types)
     var i = 0
-    repeat {
+    do {
         if i >= l { break }
         var pair = current_local_types[i]
         if pair[0] == name {
@@ -1155,7 +1191,7 @@ fn get_var_type(name) {
     } til i >= l
     var gl = len(global_var_types)
     var gi = 0
-    repeat {
+    do {
         if gi >= gl { break }
         var gpair = global_var_types[gi]
         if gpair[0] == name {
@@ -1170,7 +1206,7 @@ fn set_var_type(name, type) {
     if not in_function[0] {
         var gl = len(global_var_types)
         var gi = 0
-        repeat {
+        do {
             if gi >= gl { break }
             var gpair = global_var_types[gi]
             if gpair[0] == name {
@@ -1183,7 +1219,7 @@ fn set_var_type(name, type) {
     }
     var l = len(current_local_types)
     var i = 0
-    repeat {
+    do {
         if i >= l { break }
         var pair = current_local_types[i]
         if pair[0] == name {
@@ -1269,7 +1305,7 @@ fn scan_stmt_types(stmt) {
         var body = stmt[1]
         var bl = len(body)
         var j = 0
-        repeat {
+        do {
             if j >= bl { break }
             scan_stmt_types(body[j])
             j = j + 1
@@ -1278,7 +1314,7 @@ fn scan_stmt_types(stmt) {
         var then_body = stmt[2]
         var bl = len(then_body)
         var j = 0
-        repeat {
+        do {
             if j >= bl { break }
             scan_stmt_types(then_body[j])
             j = j + 1
@@ -1287,13 +1323,13 @@ fn scan_stmt_types(stmt) {
         var elif_clauses = stmt[3]
         var ecl = len(elif_clauses)
         var i = 0
-        repeat {
+        do {
             if i >= ecl { break }
             var clause = elif_clauses[i]
             var elif_body = clause[1]
             var ebl = len(elif_body)
             j = 0
-            repeat {
+            do {
                 if j >= ebl { break }
                 scan_stmt_types(elif_body[j])
                 j = j + 1
@@ -1304,7 +1340,7 @@ fn scan_stmt_types(stmt) {
         var else_body = stmt[4]
         var elbl = len(else_body)
         j = 0
-        repeat {
+        do {
             if j >= elbl { break }
             scan_stmt_types(else_body[j])
             j = j + 1
@@ -1313,7 +1349,7 @@ fn scan_stmt_types(stmt) {
         var try_body = stmt[1]
         var tbl = len(try_body)
         var j = 0
-        repeat {
+        do {
             if j >= tbl { break }
             scan_stmt_types(try_body[j])
             j = j + 1
@@ -1322,7 +1358,7 @@ fn scan_stmt_types(stmt) {
         var catch_body = stmt[3]
         var cbl = len(catch_body)
         j = 0
-        repeat {
+        do {
             if j >= cbl { break }
             scan_stmt_types(catch_body[j])
             j = j + 1
@@ -1331,7 +1367,7 @@ fn scan_stmt_types(stmt) {
         var u_body = stmt[1]
         var ubl = len(u_body)
         var j = 0
-        repeat {
+        do {
             if j >= ubl { break }
             scan_stmt_types(u_body[j])
             j = j + 1
@@ -1343,7 +1379,7 @@ fn collect_globals_from_stmts(stmts) {
     if not is_array(stmts) { return }
     var i = 0
     var l = len(stmts)
-    repeat {
+    do {
         if i >= l { break }
         var stmt = stmts[i]
         if is_array(stmt) {
@@ -1365,7 +1401,7 @@ fn collect_globals_from_stmts(stmts) {
                 var elif_clauses = stmt[3]
                 var el = len(elif_clauses)
                 var j = 0
-                repeat {
+                do {
                     if j >= el { break }
                     var clause = elif_clauses[j]
                     collect_globals_from_stmts(clause[1])
@@ -1385,32 +1421,86 @@ fn collect_globals_from_stmts(stmts) {
 
 fn analyze_scope_types(body, params) {
     current_local_types = []
-    
-    // 1. Add parameters as Dynamic
+
+    // 1. Add parameters - use annotated type if present, otherwise Dynamic.
     var i = 0
     var pl = len(params)
-    repeat {
+    do {
         if i >= pl { break }
-        append(current_local_types, [params[i], "Dynamic"])
+        var p_info = params[i]
+        var p_name = p_info
+        var p_type = "Dynamic"
+        if is_array(p_info) {
+            p_name = p_info[0]
+            var ann = p_info[1]
+            if ann != "" and is_unboxed_type(canonical_type(ann)) {
+                p_type = canonical_type(ann)
+            }
+        }
+        append(current_local_types, [p_name, p_type])
         i = i + 1
     } til i >= pl
-    
+
     // 2. Scan body statements
     var bl = len(body)
     i = 0
-    repeat {
+    do {
         if i >= bl { break }
         scan_stmt_types(body[i])
         i = i + 1
     } til i >= bl
 }
 
-fn gen_temp() {
+fn is_temp_reg(reg) {
+    // Guard: only %tmp_N registers belong to the temporary pool.
+    // Named variables (%wyrm_var_*, @wyrm_var_*) must never be released.
+    if not is_array(reg) {
+        if type(reg) != "string" { return false }
+    }
+    var rl = len(reg)
+    if rl < 6 { return false }
+    return char_at(reg, 0) == "%" and char_at(reg, 1) == "t" and char_at(reg, 2) == "m" and char_at(reg, 3) == "p" and char_at(reg, 4) == "_"
+}
+
+fn acquire_temp() {
+    // Grab the slot at the current stack depth, then advance the pointer.
+    var idx = g_temp_stack_top[0]
+    g_temp_stack_top[0] = g_temp_stack_top[0] + 1
+    if g_temp_stack_top[0] > g_temp_max_used[0] {
+        g_temp_max_used[0] = g_temp_stack_top[0]
+    }
+    // Keep temp_count in sync for any code that still uses it (label gen etc.)
     temp_count[0] = temp_count[0] + 1
-    var name = "%tmp_" + str(temp_count[0])
-    if in_function[0] {
-        append(g_allocas[0], "  " + name + " = alloca %struct.Value, align 8")
-    } else {
+    return "%tmp_" + str(idx)
+}
+
+fn release_temp(reg) {
+    // Return a temporary slot back to the pool.
+    // Only %tmp_N registers can be released; named variables are ignored.
+    if not is_temp_reg(reg) { return }
+    if g_temp_stack_top[0] > 0 {
+        var expected = "%tmp_" + str(g_temp_stack_top[0] - 1)
+        if reg == expected {
+            g_temp_stack_top[0] = g_temp_stack_top[0] - 1
+        }
+    }
+}
+
+fn reset_temp_statement() {
+    // Reset the pool pointer at each statement boundary so that every
+    // top-level statement starts reusing from slot 0 upward.
+    // The high-water mark (g_temp_max_used) is NOT reset here - it keeps
+    // growing to track the maximum depth seen across all statements.
+    g_temp_stack_top[0] = 0
+}
+
+fn gen_temp() {
+    // Backward-compatible wrapper: calls acquire_temp() and also emits the
+    // alloca for the main-block path (inside gen_expr for non-function scope).
+    // NOTE: FuncDef now emits all alloca slots up-front via g_temp_max_used,
+    // so this function should NOT emit alloca for in_function[0] == true.
+    var name = acquire_temp()
+    if not in_function[0] {
         append(g_main_allocas[0], "  " + name + " = alloca %struct.Value, align 8")
     }
     return name
@@ -1428,7 +1518,7 @@ fn llvm_escape_string(s) {
     var res = ""
     var i = 0
     var l = len(s)
-    repeat {
+    do {
         if i >= l { break }
         var c = char_at(s, i)
         if c == "\n" {
@@ -1464,7 +1554,7 @@ fn pop_scope() {
     // Cleanup owned variables
     var oi = 0
     var ol = len(owned_vars)
-    repeat {
+    do {
         if oi >= ol { break }
         var ov = owned_vars[oi]
         var vt = canonical_type(get_var_type(ov))
@@ -1477,7 +1567,7 @@ fn pop_scope() {
     // Cleanup mallocs
     var j = 0
     var ml = len(mallocs)
-    repeat {
+    do {
         if j >= ml { break }
         var m = mallocs[j]
         var t = gen_temp()
@@ -1488,7 +1578,7 @@ fn pop_scope() {
     // Cleanup arenas
     var k = 0
     var al = len(arenas)
-    repeat {
+    do {
         if k >= al { break }
         var a = arenas[k]
         emit_inst("call void @arena_destroy(ptr %wyrm_arena_" + a + ")")
@@ -1499,9 +1589,21 @@ fn pop_scope() {
 }
 
 fn gen_all_cleanups() {
+    var func_owned = g_func_owned[0]
+    var foi = 0
+    var fol = len(func_owned)
+    do {
+        if foi >= fol { break }
+        var fov = func_owned[foi]
+        var vt = canonical_type(get_var_type(fov))
+        if not is_unboxed_type(vt) {
+            emit_inst("call void @llvm_val_drop(ptr %wyrm_var_" + fov + ")")
+        }
+        foi = foi + 1
+    } til foi >= fol
     var scopes_list = g_scopes[0]
     var i = len(scopes_list) - 1
-    repeat {
+    do {
         if i < 0 { break }
         var scope = scopes_list[i]
         var arenas = scope[0]
@@ -1511,7 +1613,7 @@ fn gen_all_cleanups() {
         // Cleanup owned variables
         var oi = 0
         var ol = len(owned_vars)
-        repeat {
+        do {
             if oi >= ol { break }
             var ov = owned_vars[oi]
             var vt = canonical_type(get_var_type(ov))
@@ -1523,7 +1625,7 @@ fn gen_all_cleanups() {
 
         var j = 0
         var ml = len(mallocs)
-        repeat {
+        do {
             if j >= ml { break }
             var m = mallocs[j]
             var t = gen_temp()
@@ -1533,7 +1635,7 @@ fn gen_all_cleanups() {
 
         var k = 0
         var al = len(arenas)
-        repeat {
+        do {
             if k >= al { break }
             var a = arenas[k]
             emit_inst("call void @arena_destroy(ptr %wyrm_arena_" + a + ")")
@@ -1780,8 +1882,11 @@ fn gen_expr(node) {
         } elif op == "**" {
             func = "llvm_val_pow"
         }
-        
+        // Tree Liveness Rule 1: child operands consumed by this instruction
+        // can now be released back to the pool.
         emit_inst("call void @" + func + "(ptr " + t + ", ptr " + left_reg + ", ptr " + right_reg + ")")
+        release_temp(right_reg)
+        release_temp(left_reg)
         return t
     }
     if type == "UnaryOp" {
@@ -1798,9 +1903,18 @@ fn gen_expr(node) {
             var zero_reg = gen_temp()
             emit_inst("call void @llvm_val_number(ptr " + zero_reg + ", double 0.0)")
             emit_inst("call void @llvm_val_sub(ptr " + t + ", ptr " + zero_reg + ", ptr " + expr_reg + ")")
+            release_temp(zero_reg)
+            release_temp(expr_reg)
         } elif op == "!" or op == "not" {
             emit_inst("call void @llvm_val_not(ptr " + t + ", ptr " + expr_reg + ")")
+            release_temp(expr_reg)
         }
+        return t
+    }
+    if type == "WeakRef" {
+        var t = gen_temp()
+        var target_reg = gen_expr(node[1])
+        emit_inst("call void @llvm_val_weak_ref(ptr " + t + ", ptr " + target_reg + ")")
         return t
     }
     if type == "List" {
@@ -1809,7 +1923,7 @@ fn gen_expr(node) {
         var num_elems = len(elems)
         emit_inst("call void @llvm_val_array_create(ptr " + t + ", i32 " + str(num_elems) + ")")
         var i = 0
-        repeat {
+        do {
             if i >= num_elems { break }
             var elem_reg = gen_expr(elems[i])
             var idx_reg = gen_temp()
@@ -1854,7 +1968,7 @@ fn gen_expr(node) {
         
         var arg_regs = []
         var i = 0
-        repeat {
+        do {
             if i >= num_args { break }
             append(arg_regs, gen_expr(args[i]))
             i = i + 1
@@ -1892,8 +2006,17 @@ fn gen_expr(node) {
         } elif name == "append" {
             builtin_func = "llvm_val_array_append"
             is_builtin = true
+        } elif name == "weak" {
+            builtin_func = "llvm_val_weak_ref"
+            is_builtin = true
+        } elif name == "lock" {
+            builtin_func = "llvm_val_weak_lock"
+            is_builtin = true
         } elif name == "pop" {
             builtin_func = "llvm_val_array_pop"
+            is_builtin = true
+        } elif name == "input" {
+            builtin_func = "llvm_val_input"
             is_builtin = true
         } elif name == "malloc" {
             builtin_func = "llvm_val_raw_malloc"
@@ -2039,39 +2162,6 @@ fn gen_expr(node) {
         } elif name == "set_to_array" {
             builtin_func = "llvm_val_set_to_array"
             is_builtin = true
-        } elif name == "sdl_init" {
-            builtin_func = "llvm_val_sdl_init"
-            is_builtin = true
-        } elif name == "sdl_quit" {
-            builtin_func = "llvm_val_sdl_quit"
-            is_builtin = true
-        } elif name == "sdl_window" {
-            builtin_func = "llvm_val_sdl_window"
-            is_builtin = true
-        } elif name == "sdl_destroy_window" {
-            builtin_func = "llvm_val_sdl_destroy_window"
-            is_builtin = true
-        } elif name == "sdl_poll_event" {
-            builtin_func = "llvm_val_sdl_poll_event"
-            is_builtin = true
-        } elif name == "sdl_clear" {
-            builtin_func = "llvm_val_sdl_clear"
-            is_builtin = true
-        } elif name == "sdl_present" {
-            builtin_func = "llvm_val_sdl_present"
-            is_builtin = true
-        } elif name == "sdl_draw_rect" {
-            builtin_func = "llvm_val_sdl_draw_rect"
-            is_builtin = true
-        } elif name == "sdl_draw_line" {
-            builtin_func = "llvm_val_sdl_draw_line"
-            is_builtin = true
-        } elif name == "sdl_delay" {
-            builtin_func = "llvm_val_sdl_delay"
-            is_builtin = true
-        } elif name == "sdl_ticks" {
-            builtin_func = "llvm_val_sdl_ticks"
-            is_builtin = true
         } elif name == "ffi_open" {
             builtin_func = "llvm_val_ffi_open"
             is_builtin = true
@@ -2161,7 +2251,7 @@ fn gen_expr(node) {
             } else {
                 var call_args = "ptr " + t
                 var j = 0
-                repeat {
+                do {
                     if j >= num_args { break }
                     call_args = call_args + ", ptr " + arg_regs[j]
                     j = j + 1
@@ -2171,13 +2261,21 @@ fn gen_expr(node) {
         } else {
             var call_args = "ptr " + t
             var j = 0
-            repeat {
+            do {
                 if j >= num_args { break }
                 call_args = call_args + ", ptr " + arg_regs[j]
                 j = j + 1
             } til j >= num_args
             emit_inst("call void @wyrm_fn_" + name + "(" + call_args + ")")
         }
+        // Tree Liveness Rule 1: release all argument temporaries after the call.
+        // Released in reverse order so the stack pointer recovers correctly.
+        var ri = num_args - 1
+        do {
+            if ri < 0 { break }
+            release_temp(arg_regs[ri])
+            ri = ri - 1
+        } til ri < 0
         return t
     }
     if type == "MemberAccess" {
@@ -2187,6 +2285,7 @@ fn gen_expr(node) {
         var member_const = get_llvm_str_constant(member)
         var t = gen_temp()
         emit_inst("call void @llvm_val_struct_get(ptr " + t + ", ptr " + obj_reg + ", ptr " + member_const + ")")
+        release_temp(obj_reg)
         return t
     }
     if type == "MethodCall" {
@@ -2197,7 +2296,7 @@ fn gen_expr(node) {
         var num_args = len(args)
         var arg_regs = []
         var i = 0
-        repeat {
+        do {
             if i >= num_args { break }
             append(arg_regs, gen_expr(args[i]))
             i = i + 1
@@ -2205,12 +2304,20 @@ fn gen_expr(node) {
         var t = gen_temp()
         var call_args = "ptr " + t + ", ptr " + obj_reg
         var j = 0
-        repeat {
+        do {
             if j >= num_args { break }
             call_args = call_args + ", ptr " + arg_regs[j]
             j = j + 1
         } til j >= num_args
         emit_inst("call void @wyrm_fn_" + method + "(" + call_args + ")")
+        // Tree Liveness Rule 1: release argument temps and object reg after dispatch.
+        var ri = num_args - 1
+        do {
+            if ri < 0 { break }
+            release_temp(arg_regs[ri])
+            ri = ri - 1
+        } til ri < 0
+        release_temp(obj_reg)
         return t
     }
     
@@ -2219,6 +2326,10 @@ fn gen_expr(node) {
 }
 
 fn gen_statement(stmt) {
+    // Statement Boundary Reset (Rule 2): every top-level statement reuses the
+    // temporary pool from slot 0. The high-water mark accumulates across
+    // statements so FuncDef knows how many alloca slots to emit.
+    reset_temp_statement()
     var type = stmt[0]
     if type == "Use" {
         return
@@ -2241,7 +2352,7 @@ fn gen_statement(stmt) {
         var num_f = len(fields)
         var params_decl = "ptr %result_ptr"
         var i = 0
-        repeat {
+        do {
             if i >= num_f { break }
             var f_info = fields[i]
             var f_name = f_info
@@ -2257,7 +2368,7 @@ fn gen_statement(stmt) {
         var s_name_const = get_llvm_str_constant(s_name)
         ctor_code = ctor_code + "  call void @llvm_val_struct_create(ptr %s_ptr, ptr " + s_name_const + ", i32 " + str(num_f) + ")\n"
         i = 0
-        repeat {
+        do {
             if i >= num_f { break }
             var f_info = fields[i]
             var f_name = f_info
@@ -2269,12 +2380,13 @@ fn gen_statement(stmt) {
             i = i + 1
         } til i >= num_f
         ctor_code = ctor_code + "  call void @llvm_val_copy(ptr %result_ptr, ptr %s_ptr)\n"
+        ctor_code = ctor_code + "  call void @llvm_val_drop(ptr %s_ptr)\n"
         ctor_code = ctor_code + "  ret void\n}\n"
         append(g_llvm_funcs, ctor_code)
         
         var m_idx = 0
         var num_m = len(methods)
-        repeat {
+        do {
             if m_idx >= num_m { break }
             gen_statement(methods[m_idx])
             m_idx = m_idx + 1
@@ -2286,75 +2398,139 @@ fn gen_statement(stmt) {
         var name = stmt[1]
         var params = stmt[2]
         var body = stmt[3]
-        
+
         var outer_types = current_local_types
         analyze_scope_types(body, params)
-        
+
         g_allocas[0] = []
         g_insts[0] = []
         temp_count[0] = 0
         g_scopes[0] = []
         declared_locals[0] = []
-        
+        g_func_owned[0] = []
+
+        // Reset Temporary Slot Reuse Pool for this function.
+        g_temp_stack_top[0] = 0
+        g_temp_max_used[0] = 0
+
         push_scope()
-        
-        // Copy parameters to local variables so they can be mutated
+
+        // Build parameter declaration string and emit parameter prologues.
+        // Parameter format: either a plain string "p_name" (legacy unannotated)
+        // or an array [p_name, p_type] (annotated, from Phase 2 parser change).
         var i = 0
         var num_params = len(params)
         var params_decl = "ptr %result_ptr"
-        repeat {
+        do {
             if i >= num_params { break }
-            params_decl = params_decl + ", ptr %arg_" + params[i]
+            var p_info = params[i]
+            var p_name = p_info
+            if is_array(p_info) { p_name = p_info[0] }
+            params_decl = params_decl + ", ptr %arg_" + p_name
             i = i + 1
         } til i >= num_params
 
         i = 0
-        repeat {
+        do {
             if i >= num_params { break }
-            var p_name = params[i]
-            append(g_allocas[0], "  %wyrm_var_" + p_name + " = alloca %struct.Value, align 8")
+            var p_info = params[i]
+            var p_name = p_info
+            var p_type = ""
+            if is_array(p_info) {
+                p_name = p_info[0]
+                p_type = p_info[1]
+            }
+
+            var canon_p = canonical_type(p_type)
+            if p_type != "" and is_unboxed_type(canon_p) {
+                // Phase 2: Typed parameter - emit native alloca + unbox from Value arg.
+                var llvm_t = get_llvm_type(canon_p)
+                var llvm_a = get_llvm_align(canon_p)
+                append(g_allocas[0], "  %wyrm_var_" + p_name + " = alloca " + llvm_t + ", align " + llvm_a)
+                // Unbox: load the number field from the incoming Value pointer.
+                var raw_val = "%parg_raw_" + str(i)
+                var union_ptr = "%parg_union_" + str(i)
+                emit_inst(union_ptr + " = getelementptr %struct.Value, ptr %arg_" + p_name + ", i32 0, i32 1")
+                emit_inst(raw_val + " = load double, ptr " + union_ptr + ", align 8")
+                if canon_p == "i32" {
+                    var conv = "%parg_conv_" + str(i)
+                    emit_inst(conv + " = fptosi double " + raw_val + " to i32")
+                    emit_inst("store i32 " + conv + ", ptr %wyrm_var_" + p_name + ", align 4")
+                } elif canon_p == "i64" {
+                    var conv = "%parg_conv_" + str(i)
+                    emit_inst(conv + " = fptosi double " + raw_val + " to i64")
+                    emit_inst("store i64 " + conv + ", ptr %wyrm_var_" + p_name + ", align 8")
+                } elif canon_p == "u8" {
+                    var conv = "%parg_conv_" + str(i)
+                    emit_inst(conv + " = fptoui double " + raw_val + " to i8")
+                    emit_inst("store i8 " + conv + ", ptr %wyrm_var_" + p_name + ", align 1")
+                } elif canon_p == "f32" {
+                    var conv = "%parg_conv_" + str(i)
+                    emit_inst(conv + " = fptrunc double " + raw_val + " to float")
+                    emit_inst("store float " + conv + ", ptr %wyrm_var_" + p_name + ", align 4")
+                } elif canon_p == "f64" {
+                    emit_inst("store double " + raw_val + ", ptr %wyrm_var_" + p_name + ", align 8")
+                } elif canon_p == "bool" {
+                    var conv = "%parg_conv_" + str(i)
+                    emit_inst(conv + " = call i1 @llvm_val_to_bool(ptr %arg_" + p_name + ")")
+                    emit_inst("store i1 " + conv + ", ptr %wyrm_var_" + p_name + ", align 1")
+                }
+            } else {
+                // Dynamic parameter - classic Value alloca + copy.
+                append(g_allocas[0], "  %wyrm_var_" + p_name + " = alloca %struct.Value, align 8")
+                emit_inst("call void @llvm_val_copy(ptr %wyrm_var_" + p_name + ", ptr %arg_" + p_name + ")")
+            }
             append(declared_locals[0], p_name)
-            emit_inst("call void @llvm_val_copy(ptr %wyrm_var_" + p_name + ", ptr %arg_" + p_name + ")")
             i = i + 1
         } til i >= num_params
 
-        // Generate function body
+        // Generate function body.
         var j = 0
         var body_len = len(body)
-        repeat {
+        do {
             if j >= body_len { break }
             gen_statement(body[j])
             j = j + 1
         } til j >= body_len
-        
+
         pop_scope()
-        
-        // Function signature
+
+        // Build the complete function definition.
         var func_code = "define void @wyrm_fn_" + name + "(" + params_decl + ") {\n"
-        // Merge allocas and insts
+
+        // Emit named variable allocas (parameters + declared locals from g_allocas).
         var k = 0
         var allocas_list = g_allocas[0]
         var al = len(allocas_list)
-        repeat {
+        do {
             if k >= al { break }
             func_code = func_code + allocas_list[k] + "\n"
             k = k + 1
         } til k >= al
-        
+
+        // Emit exactly g_temp_max_used temporary slots (Temporary Slot Reuse Pool).
+        // This replaces the old approach that emitted one alloca per gen_temp() call.
+        var ti = 0
+        do {
+            if ti >= g_temp_max_used[0] { break }
+            func_code = func_code + "  %tmp_" + str(ti) + " = alloca %struct.Value, align 8\n"
+            ti = ti + 1
+        } til ti >= g_temp_max_used[0]
+
         k = 0
         var insts_list = g_insts[0]
         var il = len(insts_list)
-        repeat {
+        do {
             if k >= il { break }
             func_code = func_code + insts_list[k] + "\n"
             k = k + 1
         } til k >= il
-        
+
         func_code = func_code + "  call void @llvm_val_null(ptr %result_ptr)\n"
         func_code = func_code + "  ret void\n"
         func_code = func_code + "}\n"
         append(g_llvm_funcs, func_code)
-        
+
         in_function[0] = false
         current_local_types = outer_types
         return
@@ -2373,11 +2549,7 @@ fn gen_statement(stmt) {
         
         // Track owned variables in active scope
         if decl_kind == "owned" {
-            var scopes_list = g_scopes[0]
-            if len(scopes_list) > 0 {
-                var scope = scopes_list[len(scopes_list) - 1]
-                append(scope[2], name)
-            }
+            append(g_func_owned[0], name)
         }
         
         if is_unboxed_type(v_type) {
@@ -2451,6 +2623,9 @@ fn gen_statement(stmt) {
             }
             var val_reg = gen_expr(val)
             emit_inst("call void @llvm_val_copy(ptr %wyrm_var_" + name + ", ptr " + val_reg + ")")
+            if val != null and is_array(val) and (val[0] == "FuncCall" or val[0] == "WeakRef") {
+                emit_inst("call void @llvm_val_drop(ptr " + val_reg + ")")
+            }
             
             // Check if malloc in unsafe block for cleanup tracking
             if in_unsafe[0] and val != null and val[0] == "FuncCall" {
@@ -2542,7 +2717,7 @@ fn gen_statement(stmt) {
         var num_exprs = len(exprs)
         var call_args = "i32 " + str(num_exprs)
         var i = 0
-        repeat {
+        do {
             if i >= num_exprs { break }
             var reg = gen_expr(exprs[i])
             call_args = call_args + ", ptr " + reg
@@ -2587,7 +2762,7 @@ fn gen_statement(stmt) {
         push_scope()
         var i = 0
         var then_len = len(then_body)
-        repeat {
+        do {
             if i >= then_len { break }
             gen_statement(then_body[i])
             i = i + 1
@@ -2597,7 +2772,7 @@ fn gen_statement(stmt) {
         
         // Elif blocks
         i = 0
-        repeat {
+        do {
             if i >= num_elifs { break }
             var clause = elif_clauses[i]
             var elif_cond = clause[0]
@@ -2628,7 +2803,7 @@ fn gen_statement(stmt) {
             push_scope()
             var j = 0
             var elif_len = len(elif_body)
-            repeat {
+            do {
                 if j >= elif_len { break }
                 gen_statement(elif_body[j])
                 j = j + 1
@@ -2646,7 +2821,7 @@ fn gen_statement(stmt) {
             push_scope()
             i = 0
             var else_len = len(else_body)
-            repeat {
+            do {
                 if i >= else_len { break }
                 gen_statement(else_body[i])
                 i = i + 1
@@ -2675,7 +2850,7 @@ fn gen_statement(stmt) {
         push_scope()
         var i = 0
         var body_len = len(body)
-        repeat {
+        do {
             if i >= body_len { break }
             gen_statement(body[i])
             i = i + 1
@@ -2717,7 +2892,7 @@ fn gen_statement(stmt) {
         push_scope()
         var i = 0
         var try_len = len(try_body)
-        repeat {
+        do {
             if i >= try_len { break }
             gen_statement(try_body[i])
             i = i + 1
@@ -2733,7 +2908,7 @@ fn gen_statement(stmt) {
         push_scope()
         i = 0
         var catch_len = len(catch_body)
-        repeat {
+        do {
             if i >= catch_len { break }
             gen_statement(catch_body[i])
             i = i + 1
@@ -2751,7 +2926,7 @@ fn gen_statement(stmt) {
         push_scope()
         var i = 0
         var body_len = len(body)
-        repeat {
+        do {
             if i >= body_len { break }
             gen_statement(body[i])
             i = i + 1
@@ -2835,7 +3010,7 @@ fn check_expr(expr, error_funcs, in_try_stmt, in_try_expr, in_catch_expr, func_r
         var is_err_func = false
         var j = 0
         var el = len(error_funcs)
-        repeat {
+        do {
             if j >= el { break }
             if error_funcs[j] == name { is_err_func = true }
             j = j + 1
@@ -2848,7 +3023,7 @@ fn check_expr(expr, error_funcs, in_try_stmt, in_try_expr, in_catch_expr, func_r
         var args = expr[2]
         var i = 0
         var al = len(args)
-        repeat {
+        do {
             if i >= al { break }
             check_expr(args[i], error_funcs, in_try_stmt, in_try_expr, in_catch_expr, func_returns_error)
             i = i + 1
@@ -2867,7 +3042,7 @@ fn check_expr(expr, error_funcs, in_try_stmt, in_try_expr, in_catch_expr, func_r
         var elems = expr[1]
         var i = 0
         var el = len(elems)
-        repeat {
+        do {
             if i >= el { break }
             check_expr(elems[i], error_funcs, in_try_stmt, in_try_expr, in_catch_expr, func_returns_error)
             i = i + 1
@@ -2878,7 +3053,8 @@ fn check_expr(expr, error_funcs, in_try_stmt, in_try_expr, in_catch_expr, func_r
     } elif n_type == "Slice" {
         check_expr(expr[1], error_funcs, in_try_stmt, false, false, func_returns_error)
         check_expr(expr[2], error_funcs, in_try_stmt, false, false, func_returns_error)
-        check_expr(expr[3], error_funcs, in_try_stmt, false, false, func_returns_error)
+    } elif n_type == "WeakRef" {
+        check_expr(expr[1], error_funcs, in_try_stmt, in_try_expr, in_catch_expr, func_returns_error)
     }
 }
 
@@ -2896,7 +3072,7 @@ fn check_stmt(stmt, error_funcs, in_try_stmt, func_returns_error) {
         var exprs = stmt[1]
         var i = 0
         var el = len(exprs)
-        repeat {
+        do {
             if i >= el { break }
             check_expr(exprs[i], error_funcs, in_try_stmt, false, false, func_returns_error)
             i = i + 1
@@ -2908,7 +3084,7 @@ fn check_stmt(stmt, error_funcs, in_try_stmt, func_returns_error) {
         var body = stmt[1]
         var i = 0
         var bl = len(body)
-        repeat {
+        do {
             if i >= bl { break }
             check_stmt(body[i], error_funcs, in_try_stmt, func_returns_error)
             i = i + 1
@@ -2917,7 +3093,7 @@ fn check_stmt(stmt, error_funcs, in_try_stmt, func_returns_error) {
         var body = stmt[1]
         var i = 0
         var bl = len(body)
-        repeat {
+        do {
             if i >= bl { break }
             check_stmt(body[i], error_funcs, in_try_stmt, func_returns_error)
             i = i + 1
@@ -2927,7 +3103,7 @@ fn check_stmt(stmt, error_funcs, in_try_stmt, func_returns_error) {
         var then_body = stmt[2]
         var i = 0
         var bl = len(then_body)
-        repeat {
+        do {
             if i >= bl { break }
             check_stmt(then_body[i], error_funcs, in_try_stmt, func_returns_error)
             i = i + 1
@@ -2935,14 +3111,14 @@ fn check_stmt(stmt, error_funcs, in_try_stmt, func_returns_error) {
         var elif_clauses = stmt[3]
         i = 0
         var ecl = len(elif_clauses)
-        repeat {
+        do {
             if i >= ecl { break }
             var clause = elif_clauses[i]
             check_expr(clause[0], error_funcs, in_try_stmt, false, false, func_returns_error)
             var elif_body = clause[1]
             var j = 0
             var ebl = len(elif_body)
-            repeat {
+            do {
                 if j >= ebl { break }
                 check_stmt(elif_body[j], error_funcs, in_try_stmt, func_returns_error)
                 j = j + 1
@@ -2952,7 +3128,7 @@ fn check_stmt(stmt, error_funcs, in_try_stmt, func_returns_error) {
         var else_body = stmt[4]
         i = 0
         var elbl = len(else_body)
-        repeat {
+        do {
             if i >= elbl { break }
             check_stmt(else_body[i], error_funcs, in_try_stmt, func_returns_error)
             i = i + 1
@@ -2962,14 +3138,14 @@ fn check_stmt(stmt, error_funcs, in_try_stmt, func_returns_error) {
         var catch_body = stmt[3]
         var i = 0
         var tbl = len(try_body)
-        repeat {
+        do {
             if i >= tbl { break }
             check_stmt(try_body[i], error_funcs, true, func_returns_error)
             i = i + 1
         } til i >= tbl
         i = 0
         var cbl = len(catch_body)
-        repeat {
+        do {
             if i >= cbl { break }
             check_stmt(catch_body[i], error_funcs, in_try_stmt, func_returns_error)
             i = i + 1
@@ -2985,7 +3161,7 @@ fn check_errors(ast) {
     // First pass: collect error-returning function names
     var i = 0
     var l = len(ast)
-    repeat {
+    do {
         if i >= l { break }
         var stmt = ast[i]
         if stmt[0] == "FuncDef" {
@@ -2999,7 +3175,7 @@ fn check_errors(ast) {
     
     // Second pass: check handling in functions and top-level
     i = 0
-    repeat {
+    do {
         if i >= l { break }
         var stmt = ast[i]
         if stmt[0] == "FuncDef" {
@@ -3007,7 +3183,7 @@ fn check_errors(ast) {
             var body = stmt[3]
             var j = 0
             var bl = len(body)
-            repeat {
+            do {
                 if j >= bl { break }
                 check_stmt(body[j], error_funcs, false, returns_error)
                 j = j + 1
@@ -3028,7 +3204,7 @@ fn transpile_llvm(ast) {
     temp_count[0] = 0
     
     // Generate declarations
-    append(g_llvm_globals, "; Module generated by Wyrm 3.2.0 Self-Hosted LLVM backend")
+    append(g_llvm_globals, "; Module generated by Wyrm 1.2.0 Self-Hosted LLVM backend")
     append(g_llvm_globals, "target datalayout = \"e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"")
     append(g_llvm_globals, "target triple = \"x86_64-pc-windows-msvc\"")
     append(g_llvm_globals, "%struct.Value = type { i32, %union.anon }")
@@ -3105,6 +3281,8 @@ fn transpile_llvm(ast) {
     append(g_llvm_decls, "declare void @llvm_val_struct_create(ptr, ptr, i32)")
     append(g_llvm_decls, "declare void @llvm_val_struct_get(ptr, ptr, ptr)")
     append(g_llvm_decls, "declare void @llvm_val_struct_set(ptr, ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_weak_ref(ptr, ptr)")
+    append(g_llvm_decls, "declare void @llvm_val_weak_lock(ptr, ptr)")
     append(g_llvm_decls, "declare void @llvm_val_from_i64(ptr, i64)")
     append(g_llvm_decls, "declare void @llvm_val_from_u8(ptr, i8)")
     append(g_llvm_decls, "declare void @llvm_val_from_f32(ptr, float)")
@@ -3185,7 +3363,7 @@ fn transpile_llvm(ast) {
     // Check if main func is defined
     var idx = 0
     var length = len(ast)
-    repeat {
+    do {
         if idx >= length { break }
         var stmt = ast[idx]
         if stmt[0] == "FuncDef" and stmt[1] == "main" {
@@ -3199,7 +3377,7 @@ fn transpile_llvm(ast) {
 
     // Process AST statements
     idx = 0
-    repeat {
+    do {
         if idx >= length { break }
         gen_statement(ast[idx])
         idx = idx + 1
@@ -3211,7 +3389,7 @@ fn transpile_llvm(ast) {
     // Add globals
     idx = 0
     length = len(g_llvm_globals)
-    repeat {
+    do {
         if idx >= length { break }
         result = result + g_llvm_globals[idx] + "\n"
         idx = idx + 1
@@ -3221,7 +3399,7 @@ fn transpile_llvm(ast) {
     // Add decls
     idx = 0
     length = len(g_llvm_decls)
-    repeat {
+    do {
         if idx >= length { break }
         result = result + g_llvm_decls[idx] + "\n"
         idx = idx + 1
@@ -3231,7 +3409,7 @@ fn transpile_llvm(ast) {
     // Add functions
     idx = 0
     length = len(g_llvm_funcs)
-    repeat {
+    do {
         if idx >= length { break }
         result = result + g_llvm_funcs[idx] + "\n"
         idx = idx + 1
@@ -3246,7 +3424,7 @@ fn transpile_llvm(ast) {
     idx = 0
     var m_allocs = g_main_allocas[0]
     var m_len = len(m_allocs)
-    repeat {
+    do {
         if idx >= m_len { break }
         result = result + m_allocs[idx] + "\n"
         idx = idx + 1
@@ -3255,7 +3433,7 @@ fn transpile_llvm(ast) {
     // Add top-level allocations if any
     idx = 0
     length = len(g_llvm_main)
-    repeat {
+    do {
         if idx >= length { break }
         result = result + g_llvm_main[idx] + "\n"
         idx = idx + 1
@@ -3276,7 +3454,7 @@ fn transpile_llvm(ast) {
 fn parse_file(path) {
     if contains_val(g_processed_files[0], path) { return [] }
     append(g_processed_files[0], path)
-    if path == "std.json" or path == "std.yaml" or path == "std.collections" or path == "std.sdl" or path == "std.ffi" or path == "std.thread" or path == "std.random" or path == "std.time" {
+    if path == "std.json" or path == "json" or path == "std.yaml" or path == "yaml" or path == "std.collections" or path == "collections" or path == "std.ffi" or path == "ffi" or path == "std.thread" or path == "thread" or path == "std.random" or path == "random" or path == "std.time" or path == "time" {
         return []
     }
     
@@ -3284,7 +3462,7 @@ fn parse_file(path) {
     var alt_path = ""
     var pi = 0
     var plen = len(path)
-    repeat {
+    do {
         if pi >= plen { break }
         var ch = char_at(path, pi)
         if ch == "." {
@@ -3300,7 +3478,7 @@ fn parse_file(path) {
     var last_slash = -1
     var ci = 0
     var clen = len(cur_f)
-    repeat {
+    do {
         if ci >= clen { break }
         var cc = char_at(cur_f, ci)
         if cc == "/" or cc == "\\" {
@@ -3310,7 +3488,7 @@ fn parse_file(path) {
     } til ci >= clen
     if last_slash != -1 {
         var si = 0
-        repeat {
+        do {
             if si >= last_slash { break }
             current_dir = current_dir + char_at(cur_f, si)
             si = si + 1
@@ -3367,7 +3545,7 @@ fn parse_file(path) {
 
     var c_idx = 0
     var c_total = len(candidates)
-    repeat {
+    do {
         if c_idx >= c_total { break }
         var cand = candidates[c_idx]
         var test_c = read_file(cand)
@@ -3401,14 +3579,14 @@ fn parse_file(path) {
     var full_ast = []
     var i = 0
     var l = len(file_ast)
-    repeat {
+    do {
         if i >= l { break }
         var stmt = file_ast[i]
         if stmt[0] == "Use" {
             var sub_ast = parse_file(stmt[1])
             var j = 0
             var sl = len(sub_ast)
-            repeat {
+            do {
                 if j >= sl { break }
                 append(full_ast, sub_ast[j])
                 j = j + 1
@@ -3425,10 +3603,11 @@ fn parse_file(path) {
 fn main() {
     var args = sys_args()
     if len(args) < 2 {
-        print("wyrmc v3.2.1 (Self-Hosted)")
+        print("wyrmc 1.2.0")
         print("Usage:")
         print("  wyrmc build <file.wyr> [-o <out.exe>]")
         print("  wyrmc run <file.wyr> [args...]")
+        print("  wyrmc clean [--all]")
         print("  wyrmc --version")
         print("  wyrmc --help")
         exit(0)
@@ -3436,17 +3615,34 @@ fn main() {
 
     var command = args[1]
     if command == "--version" or command == "-v" or command == "version" {
-        print("wyrmc v3.2.1 (Self-Hosted)")
+        print("wyrmc 1.2.0")
         exit(0)
     }
 
     if command == "--help" or command == "-h" or command == "help" {
-        print("wyrmc v3.2.1 (Self-Hosted)")
+        print("wyrmc 1.2.0")
         print("Usage:")
         print("  wyrmc build <file.wyr> [-o <out.exe>]")
         print("  wyrmc run <file.wyr> [args...]")
+        print("  wyrmc clean [--all]")
         print("  wyrmc --version")
         print("  wyrmc --help")
+        exit(0)
+    }
+
+    if command == "clean" {
+        var clean_all = false
+        if len(args) >= 3 {
+            if args[2] == "--all" or args[2] == "-a" {
+                clean_all = true
+            }
+        }
+        system("cmd.exe /c \"del /q /f *_temp.ll _wyrm_temp.c *_run.exe *.o *.obj 2>nul\"")
+        if clean_all {
+            system("powershell -NoProfile -Command \"Get-ChildItem -Filter *.exe | ForEach-Object { if ((Test-Path ($_.BaseName + '.wyr')) -or $_.Name -eq 'output.exe' -or $_.Name -eq 'a.exe') { Remove-Item $_.FullName -Force } }\" 2>nul")
+        }
+        system("cmd.exe /c \"if exist .wyrm_cache rmdir /s /q .wyrm_cache 2>nul\"")
+        print("[wyrmc 1.2.0] Cleaned temporary build artifacts and cache.")
         exit(0)
     }
 
@@ -3468,7 +3664,7 @@ fn main() {
     var out_exe = "a.exe"
     var last_dot = len(source_file)
     var i = len(source_file) - 1
-    repeat {
+    do {
         if i < 0 { break }
         var char = char_at(source_file, i)
         if char == "." {
@@ -3484,7 +3680,7 @@ fn main() {
     // Extract base name
     var base_name = ""
     i = 0
-    repeat {
+    do {
         if i >= last_dot { break }
         base_name = base_name + char_at(source_file, i)
         i = i + 1
@@ -3536,12 +3732,11 @@ fn main() {
     var ffi_c = lib_path + "wyrm_ffi.c"
     var std_json_c = lib_path + "stdlib/wyrm_std_json.c"
     var std_yaml_c = lib_path + "stdlib/wyrm_std_yaml.c"
-    var std_sdl_c = lib_path + "stdlib/wyrm_std_sdl.c"
     var std_coll_c = lib_path + "stdlib/wyrm_std_collections.c"
     var std_rand_c = lib_path + "stdlib/wyrm_std_random.c"
     var std_time_c = lib_path + "stdlib/wyrm_std_time.c"
 
-    var all_runtime = "\"" + runtime_c + "\" \"" + arena_c + "\" \"" + str_c + "\" \"" + ffi_c + "\" \"" + std_json_c + "\" \"" + std_yaml_c + "\" \"" + std_sdl_c + "\" \"" + std_coll_c + "\" \"" + std_rand_c + "\" \"" + std_time_c + "\""
+    var all_runtime = "\"" + runtime_c + "\" \"" + arena_c + "\" \"" + str_c + "\" \"" + ffi_c + "\" \"" + std_json_c + "\" \"" + std_yaml_c + "\" \"" + std_coll_c + "\" \"" + std_rand_c + "\" \"" + std_time_c + "\""
     var inc_flags = "-I\"" + lib_path + "\" -D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_DEPRECATE -Wno-deprecated-declarations -Wno-switch -Wno-override-module"
 
     // Discover clang executable
@@ -3569,7 +3764,7 @@ fn main() {
         var native_exe = ""
         var p_idx = 0
         var p_len = len(out_exe)
-        repeat {
+        do {
             if p_idx >= p_len { break }
             var ch = char_at(out_exe, p_idx)
             if ch == "/" {
@@ -3584,5 +3779,5 @@ fn main() {
         exit(run_res)
     }
 
-    print("[wyrmc v3.2.1] Successfully compiled '" + source_file + "' -> Native Binary '" + out_exe + "'")
+    print("[wyrmc 1.2.0] Successfully compiled '" + source_file + "' -> Native Binary '" + out_exe + "'")
 }

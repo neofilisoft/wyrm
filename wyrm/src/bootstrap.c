@@ -130,7 +130,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     if (!fgets(version, sizeof(version), vf)) {
-        strcpy(version, "3.2.0");
+        strcpy(version, "1.2.0");
     }
     fclose(vf);
 
@@ -174,10 +174,18 @@ int main(int argc, char *argv[]) {
              "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\wyrm_ffi.c\" -o \"%s\\wyrm_ffi.o\" -I\"%s\\wyrm\\lib\" && "
              "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\stdlib\\wyrm_std_json.c\" -o \"%s\\wyrm_std_json.o\" -I\"%s\\wyrm\\lib\" && "
              "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\stdlib\\wyrm_std_yaml.c\" -o \"%s\\wyrm_std_yaml.o\" -I\"%s\\wyrm\\lib\" && "
-             "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\stdlib\\wyrm_std_sdl.c\" -o \"%s\\wyrm_std_sdl.o\" -I\"%s\\wyrm\\lib\" && "
              "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\stdlib\\wyrm_std_collections.c\" -o \"%s\\wyrm_std_collections.o\" -I\"%s\\wyrm\\lib\" && "
              "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\stdlib\\wyrm_std_random.c\" -o \"%s\\wyrm_std_random.o\" -I\"%s\\wyrm\\lib\" && "
-             "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\stdlib\\wyrm_std_time.c\" -o \"%s\\wyrm_std_time.o\" -I\"%s\\wyrm\\lib\"",
+             "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\stdlib\\wyrm_std_time.c\" -o \"%s\\wyrm_std_time.o\" -I\"%s\\wyrm\\lib\" && "
+             "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\stdlib\\wyrm_std_os.c\" -o \"%s\\wyrm_std_os.o\" -I\"%s\\wyrm\\lib\" && "
+             "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\stdlib\\wyrm_std_fs.c\" -o \"%s\\wyrm_std_fs.o\" -I\"%s\\wyrm\\lib\" && "
+             "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\stdlib\\wyrm_std_path.c\" -o \"%s\\wyrm_std_path.o\" -I\"%s\\wyrm\\lib\" && "
+             "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\stdlib\\wyrm_std_io.c\" -o \"%s\\wyrm_std_io.o\" -I\"%s\\wyrm\\lib\" && "
+             "gcc -O2 -std=c11 -c \"%s\\wyrm\\lib\\stdlib\\wyrm_std_http.c\" -o \"%s\\wyrm_std_http.o\" -I\"%s\\wyrm\\lib\"",
+             workspace, install_root, workspace,
+             workspace, install_root, workspace,
+             workspace, install_root, workspace,
+             workspace, install_root, workspace,
              workspace, install_root, workspace,
              workspace, install_root, workspace,
              workspace, install_root, workspace,
@@ -196,7 +204,7 @@ int main(int argc, char *argv[]) {
 
     snprintf(build_cmd, sizeof(build_cmd),
              "g++ -O2 -std=c++20"
-             " \"%s\\wyrm\\scr\\wyrmc.cpp\""
+             " \"%s\\wyrm\\src\\wyrmc.cpp\""
              " \"%s\\compiler\\lexer\\lexer.cpp\""
              " \"%s\\compiler\\parser\\parser.cpp\""
              " \"%s\\compiler\\interpreter\\interpreter.cpp\""
@@ -205,13 +213,17 @@ int main(int argc, char *argv[]) {
              " \"%s\\compiler\\transpiler\\transpiler.cpp\""
              " \"%s\\wyrm_core.o\" \"%s\\wyrm_arena.o\" \"%s\\wyrm_str.o\""
              " \"%s\\wyrm_ffi.o\" \"%s\\wyrm_std_json.o\" \"%s\\wyrm_std_yaml.o\""
-             " \"%s\\wyrm_std_sdl.o\" \"%s\\wyrm_std_collections.o\" \"%s\\wyrm_std_random.o\" \"%s\\wyrm_std_time.o\""
+             " \"%s\\wyrm_std_collections.o\" \"%s\\wyrm_std_random.o\" \"%s\\wyrm_std_time.o\""
+             " \"%s\\wyrm_std_os.o\" \"%s\\wyrm_std_fs.o\" \"%s\\wyrm_std_path.o\""
+             " \"%s\\wyrm_std_io.o\" \"%s\\wyrm_std_http.o\""
              " -o \"%s\\wyrmc_stage0.exe\""
              " -DWYRM_VERSION=\\\"%s\\\" -DWYRMC_VERSION=\\\"%s\\\"",
              workspace, workspace, workspace, workspace, workspace, workspace, workspace,
              install_root, install_root, install_root,
              install_root, install_root, install_root,
-             install_root, install_root, install_root, install_root,
+             install_root, install_root, install_root,
+             install_root, install_root, install_root,
+             install_root, install_root,
              install_root, version, version);
     if (system(build_cmd) != 0) {
         fprintf(stderr, "Error: Failed to compile Stage 0 bootstrap compiler. Please ensure g++ is installed and available in PATH.\n");
@@ -228,7 +240,7 @@ int main(int argc, char *argv[]) {
     }
 
     snprintf(build_cmd, sizeof(build_cmd),
-             "g++ -O2 -std=c++20 \"%s\\wyrm\\scr\\wyrpkg.cpp\""
+             "g++ -O2 -std=c++20 \"%s\\wyrm\\src\\wyrpkg.cpp\""
              " -o \"%s\\wyrpkg.exe\""
              " -DWYRM_VERSION=\\\"%s\\\" -DWYRPKG_VERSION=\\\"%s\\\"",
              workspace, wyrpkg_dir, version, version);
