@@ -175,7 +175,7 @@ wyrpkg remove package_name        # Remove a package
 ```toml
 [package]
 name = "my_project"
-version = "0.1.0"
+version = "1.0.0"
 entry = "main.wyr"
 
 [dependencies]
