@@ -130,7 +130,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     if (!fgets(version, sizeof(version), vf)) {
-        strcpy(version, "1.2.0");
+        strcpy(version, "1.2.1");
     }
     fclose(vf);
 

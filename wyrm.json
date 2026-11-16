@@ -1,11 +1,11 @@
 ﻿{
-    "version": "1.2.0",
+    "version": "1.2.1",
     "description": "A static systems programming language with a self-hosted compiler and gradual static typing",
     "homepage": "https://github.com/neofilisoft/wyrm",
     "license": "MIT",
     "architecture": {
         "64bit": {
-            "url": "https://github.com/neofilisoft/wyrm/releases/download/v1.2.0/wyrm-v1.2.0-windows-x64.zip"
+            "url": "https://github.com/neofilisoft/wyrm/releases/download/v1.2.1/wyrm-v1.2.1-windows-x64.zip"
         }
     },
     "bin": [

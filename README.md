@@ -1,6 +1,6 @@
 # Wyrm Language
 [![License: MIT](https://img.shields.io/badge/License-MIT-333333.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.2.0-B10C1A)](https://github.com/neofilisoft/wyrm/releases)
+[![Version](https://img.shields.io/badge/version-1.2.1-B10C1A)](https://github.com/neofilisoft/wyrm/releases)
 
 Wyrm (`.wyr`) is a **static systems programming language** with a self-hosted compiler, gradual static typing, and deterministic memory management. The toolchain consists of `wyrmc` (the compiler and runner) and `wyrpkg` (the package manager).
 
@@ -28,7 +28,7 @@ Wyrm (`.wyr`) is a **static systems programming language** with a self-hosted co
 - Functions: `fn`, optional type annotations, recursion guard (depth 500), `fn main()` entry point.
 - Built-in types: `number`, `bool`, `string`, `array`, `struct`, `raw_ptr`, `null`.
 
-### New in 1.2.0
+### New in 1.2.1
 - **`enum` and `match`**: Algebraic data type variants with structural pattern matching:
   ```wyrm
   enum Shape {
@@ -133,8 +133,8 @@ chmod +x install.sh
 Check versions:
 
 ```bash
-wyrmc --version    # wyrmc 1.2.0
-wyrpkg --version   # wyrpkg 1.2.0
+wyrmc --version    # wyrmc 1.2.1
+wyrpkg --version   # wyrpkg 1.2.1
 ```
 
 ## Compiler Commands
@@ -162,7 +162,7 @@ wyrpkg build                      # Build project
 wyrpkg run                        # Run project
 wyrpkg install owner/repo         # Install from GitHub
 wyrpkg install ./my_local_lib     # Install from local path
-wyrpkg add    std_time@1.2.0     # Add dependency to manifest
+wyrpkg add    std_time@1.2.1     # Add dependency to manifest
 wyrpkg lock                       # Pin all dependencies to lock file
 wyrpkg update repo                # Update a dependency
 wyrpkg publish                    # Publish to public registry

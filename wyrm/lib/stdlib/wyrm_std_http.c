@@ -72,7 +72,7 @@ static CURL *setup_curl(const char *url, struct WyrmCurlBuf *buf) {
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, buf);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Wyrm/1.2.0 (wyrm-lang.org)");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Wyrm/1.2.1 (wyrm-lang.org)");
 #ifdef _WIN32
     /* On Windows, skip SSL peer verification if no CA bundle is found.
      * In production, bundle a CA cert instead of disabling verification. */

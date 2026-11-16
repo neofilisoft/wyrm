@@ -1,6 +1,6 @@
 # Wyrm Language Specification
 
-This document describes the Wyrm language design and architecture. The canonical project version is stored in the [VERSION](file:///c:/Users/BEST/Desktop/wyrm/VERSION) file (currently **1.2.0**).
+This document describes the Wyrm language design and architecture. The canonical project version is stored in the [VERSION](file:///c:/Users/BEST/Desktop/wyrm/VERSION) file (currently **1.2.1**).
 
 ---
 
@@ -114,7 +114,7 @@ fn main() {
 - `fn main()` is the program entry point, called automatically.
 - Recursion depth guard: [MAX_CALL_DEPTH](file:///c:/Users/BEST/Desktop/wyrm/compiler/interpreter/interpreter.hpp#L65) = 500.
 
-### Generic Functions (1.2.0)
+### Generic Functions (1.2.1)
 
 Type parameters are erased at runtime (all map to `Value`). Syntax:
 ```wyrm
@@ -125,7 +125,7 @@ fn swap<T>(a: T, b: T) {
 }
 ```
 
-### Async Functions (1.2.0)
+### Async Functions (1.2.1)
 
 `async fn` marks a function as asynchronous. `await` evaluates the expression immediately in the current sequential execution model:
 ```wyrm
@@ -135,7 +135,7 @@ async fn fetch_data(url) {
 }
 ```
 
-### Closures / Lambda (1.2.0)
+### Closures / Lambda (1.2.1)
 
 Anonymous functions are first-class values:
 ```wyrm
@@ -200,7 +200,7 @@ p.translate(10, 20)
 print(p.distance_sq())   // 745
 ```
 
-### Generic Structs (1.2.0)
+### Generic Structs (1.2.1)
 
 ```wyrm
 struct Box<T> {
@@ -215,7 +215,7 @@ var b = Box(42)
 
 ---
 
-## 9. Enums & Pattern Matching (1.2.0)
+## 9. Enums & Pattern Matching (1.2.1)
 
 ### Enum Definition
 
@@ -247,7 +247,7 @@ match s {
 
 ---
 
-## 10. Error Handling (1.2.0)
+## 10. Error Handling (1.2.1)
 
 ### try / catch / throw
 
@@ -328,7 +328,7 @@ Wyrm employs **Deterministic Drop Glue + Scoped Arena Allocators + Ownership Mov
 
 Use with `use <alias>;` or `use std.<name>;`.
 
-### `std.os` - Operating System (1.2.0)
+### `std.os` - Operating System (1.2.1)
 
 ```wyrm
 use std.os;
@@ -347,7 +347,7 @@ fn main() {
 }
 ```
 
-### `std.fs` - File System (1.2.0)
+### `std.fs` - File System (1.2.1)
 
 ```wyrm
 use std.fs;
@@ -364,7 +364,7 @@ fn main() {
 }
 ```
 
-### `std.path` - Path Utilities (1.2.0)
+### `std.path` - Path Utilities (1.2.1)
 
 ```wyrm
 use std.path;
@@ -379,7 +379,7 @@ fn main() {
 }
 ```
 
-### `std.io` - I/O Streams (1.2.0)
+### `std.io` - I/O Streams (1.2.1)
 
 ```wyrm
 use std.io;
@@ -392,7 +392,7 @@ fn main() {
 }
 ```
 
-### `std.http` - HTTP Client (1.2.0)
+### `std.http` - HTTP Client (1.2.1)
 
 ```wyrm
 use std.http;
@@ -645,7 +645,7 @@ wyrpkg build
 wyrpkg run
 wyrpkg install owner/repo
 wyrpkg install ./local_library
-wyrpkg add std_time@1.2.0
+wyrpkg add std_time@1.2.1
 wyrpkg lock
 wyrpkg update repo
 wyrpkg publish
@@ -662,7 +662,7 @@ version = "0.1.0"
 entry = "main.wyr"
 
 [dependencies]
-# std_time = "1.2.0"
+# std_time = "1.2.1"
 ```
 
 ---

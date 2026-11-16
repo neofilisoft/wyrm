@@ -13,7 +13,7 @@
 #include "../../compiler/transpiler/transpiler.hpp"
 
 #ifndef WYRMC_VERSION
-#define WYRMC_VERSION "1.2.0"
+#define WYRMC_VERSION "1.2.1"
 #endif
 
 namespace fs = std::filesystem;
