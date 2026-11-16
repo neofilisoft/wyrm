@@ -38,6 +38,12 @@ private:
     ASTNodePtr arena_declaration();
     ASTNodePtr struct_def();
     ASTNodePtr variable_declaration(const std::string& var_type);
+    // M2
+    ASTNodePtr enum_def();
+    ASTNodePtr match_statement();
+    // M3
+    ASTNodePtr try_catch_statement();
+    ASTNodePtr throw_statement();
     
     ASTNodePtr assignment();
     ASTNodePtr indexed_assignment_or_expr();
@@ -57,6 +63,10 @@ private:
 
     ASTNodePtr finish_call(ASTNodePtr name);
     ASTNodePtr finish_subscript(ASTNodePtr obj);
+
+    // Helpers
+    std::vector<std::string> parse_type_params(); // M4: parses <T, U>
+    std::vector<ASTNodePtr> parse_block();        // parses { ... } body
 };
 
 } // namespace wyrm

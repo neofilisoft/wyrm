@@ -1,19 +1,23 @@
-use std.sdl;
+// examples/test_sdl_auto.wyr - Automated SDL2 frame loop test (10 frames)
+use sdl;
 
 fn main() {
     sdl_init()
-    var win = sdl_window("Wyrm Game Test", 640, 480)
+    var win  = sdl_window("Wyrm Game Test", 640, 480)
+    var rend = sdl_renderer(win)
     print("Window created successfully!")
     var frame = 0
 
     do {
         var ev = sdl_poll_event()
-        sdl_clear(win, 20, 30, 50)
-        sdl_present(win)
+        sdl_clear(rend, 20, 30, 50)
+        sdl_present(rend)
         sdl_delay(16)
         frame = frame + 1
     } til frame >= 10
 
+    sdl_destroy_renderer(rend)
+    sdl_destroy_window(win)
     sdl_quit()
     print("SDL test passed successfully!")
 }

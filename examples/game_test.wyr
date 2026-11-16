@@ -1,8 +1,10 @@
-use std.sdl;
+// examples/game_test.wyr - Simple SDL2 game loop using external sdl package
+use sdl;
 
 fn main() {
     sdl_init()
-    var win = sdl_window("My Game", 800, 600)
+    var win  = sdl_window("My Game", 800, 600)
+    var rend = sdl_renderer(win)
     var running = true
 
     do {
@@ -14,10 +16,12 @@ fn main() {
             print("Key:", ev["key"])
         }
 
-        sdl_clear(win, 0, 0, 0)
-        sdl_present(win)
+        sdl_clear(rend, 0, 0, 0)
+        sdl_present(rend)
         sdl_delay(16)
     } til running == false
 
+    sdl_destroy_renderer(rend)
+    sdl_destroy_window(win)
     sdl_quit()
 }

@@ -1,0 +1,395 @@
+/// std.string - Wyrm Standard String Library
+/// Provides string inspection, formatting, parsing, and builder utilities.
+/// All functions work with the Wyrm dynamic Value string type (UTF-8 char*).
+///
+/// Usage:
+///   use std.string;
+///   var padded = str_pad_left("42", 6, "0")
+///   var parts  = str_split_lines(text)
+
+// -------------------------------------------------------------------------
+// Inspection
+// -------------------------------------------------------------------------
+
+/// Returns the length of string s in bytes.
+fn str_len(s) {
+    return len(s)
+}
+
+/// Returns true if s is empty (length == 0).
+fn str_empty(s) {
+    return len(s) == 0
+}
+
+/// Returns true if s starts with prefix.
+fn str_starts_with(s, prefix) {
+    return starts_with(s, prefix)
+}
+
+/// Returns true if s ends with suffix.
+fn str_ends_with(s, suffix) {
+    return ends_with(s, suffix)
+}
+
+/// Returns true if s contains the substring sub.
+fn str_contains(s, sub) {
+    return contains(s, sub)
+}
+
+/// Returns the character at byte index idx (0-based).
+fn str_char_at(s, idx) {
+    return char_at(s, idx)
+}
+
+/// Returns the byte value (integer) of character c.
+fn str_ord(c) {
+    return ord_val(c)
+}
+
+/// Returns the single-character string whose byte value is n.
+fn str_chr(n) {
+    return chr_val(n)
+}
+
+/// Returns a byte array (array of integers 0-255) representing the UTF-8
+/// encoding of s.
+fn str_to_bytes(s) {
+    return to_bytes(s)
+}
+
+/// Returns a string decoded from a byte array (array of integers 0-255).
+fn str_from_bytes(arr) {
+    return from_bytes(arr)
+}
+
+// -------------------------------------------------------------------------
+// Case Conversion
+// -------------------------------------------------------------------------
+
+/// Returns s converted to uppercase.
+fn str_upper(s) {
+    return upper(s)
+}
+
+/// Returns s converted to lowercase.
+fn str_lower(s) {
+    return lower(s)
+}
+
+/// Returns s with the first character uppercased and the rest lowercased.
+fn str_capitalize(s) {
+    if len(s) == 0 { return "" }
+    return upper(char_at(s, 0)) + lower(str_slice(s, 1, len(s)))
+}
+
+/// Returns s converted to title case (first letter of each word uppercased).
+fn str_title(s) {
+    var words = split(s, " ")
+    var result = []
+    var i = 0
+    do {
+        result = append(result, str_capitalize(words[i]))
+        i = i + 1
+    } til i >= len(words)
+    return join(" ", result)
+}
+
+// -------------------------------------------------------------------------
+// Trimming & Padding
+// -------------------------------------------------------------------------
+
+/// Returns s with leading and trailing whitespace removed.
+fn str_trim(s) {
+    return trim(s)
+}
+
+/// Returns s with leading whitespace removed.
+fn str_trim_left(s) {
+    var i = 0
+    do {
+        if i >= len(s) { return "" }
+        var c = char_at(s, i)
+        if c != " " && c != "\t" && c != "\n" && c != "\r" {
+            return str_slice(s, i, len(s))
+        }
+        i = i + 1
+    } til i > len(s)
+    return ""
+}
+
+/// Returns s with trailing whitespace removed.
+fn str_trim_right(s) {
+    var i = len(s) - 1
+    do {
+        if i < 0 { return "" }
+        var c = char_at(s, i)
+        if c != " " && c != "\t" && c != "\n" && c != "\r" {
+            return str_slice(s, 0, i + 1)
+        }
+        i = i - 1
+    } til i < 0
+    return ""
+}
+
+/// Returns s left-padded to width using pad character pad_char.
+/// If s is already >= width, returns s unchanged.
+fn str_pad_left(s, width, pad_char) {
+    var result = s
+    do {
+        if len(result) >= width { return result }
+        result = pad_char + result
+    } til len(result) >= width
+    return result
+}
+
+/// Returns s right-padded to width using pad character pad_char.
+fn str_pad_right(s, width, pad_char) {
+    var result = s
+    do {
+        if len(result) >= width { return result }
+        result = result + pad_char
+    } til len(result) >= width
+    return result
+}
+
+/// Returns s center-padded to width using pad_char (left-biased if odd).
+fn str_pad_center(s, width, pad_char) {
+    var n = width - len(s)
+    if n <= 0 { return s }
+    var left = n // 2
+    var right = n - left
+    return str_pad_left(str_pad_right(s, len(s) + right, pad_char), width, pad_char)
+}
+
+// -------------------------------------------------------------------------
+// Slicing & Extraction
+// -------------------------------------------------------------------------
+
+/// Returns the substring of s from byte index start (inclusive) to end (exclusive).
+fn str_slice(s, start, end) {
+    return s[start:end]
+}
+
+/// Returns the first n bytes of s.
+fn str_take(s, n) {
+    return s[0:n]
+}
+
+/// Returns s with the first n bytes removed.
+fn str_drop(s, n) {
+    return s[n:len(s)]
+}
+
+// -------------------------------------------------------------------------
+// Splitting & Joining
+// -------------------------------------------------------------------------
+
+/// Splits s by delimiter sep, returning an array of substrings.
+fn str_split(s, sep) {
+    return split(s, sep)
+}
+
+/// Splits s into individual characters, returning an array.
+fn str_chars(s) {
+    var result = []
+    var i = 0
+    do {
+        result = append(result, char_at(s, i))
+        i = i + 1
+    } til i >= len(s)
+    return result
+}
+
+/// Splits s into lines (splitting on "\n"), trimming trailing "\r".
+fn str_split_lines(s) {
+    var raw = split(s, "\n")
+    var result = []
+    var i = 0
+    do {
+        var line = raw[i]
+        if ends_with(line, "\r") {
+            line = line[0:len(line) - 1]
+        }
+        result = append(result, line)
+        i = i + 1
+    } til i >= len(raw)
+    return result
+}
+
+/// Joins an array of strings with separator sep.
+fn str_join(arr, sep) {
+    return join(sep, arr)
+}
+
+// -------------------------------------------------------------------------
+// Searching & Replacement
+// -------------------------------------------------------------------------
+
+/// Replaces all occurrences of old with new_s in s.
+fn str_replace(s, old, new_s) {
+    return replace(s, old, new_s)
+}
+
+/// Returns the index of the first occurrence of sub in s, or -1 if not found.
+fn str_index_of(s, sub) {
+    var slen = len(s)
+    var sublen = len(sub)
+    if sublen == 0 { return 0 }
+    if sublen > slen { return -1 }
+    var i = 0
+    do {
+        if i + sublen > slen { return -1 }
+        var chunk = s[i:i + sublen]
+        if chunk == sub { return i }
+        i = i + 1
+    } til i + sublen > slen
+    return -1
+}
+
+/// Returns the index of the last occurrence of sub in s, or -1 if not found.
+fn str_last_index_of(s, sub) {
+    var slen = len(s)
+    var sublen = len(sub)
+    if sublen == 0 { return slen }
+    if sublen > slen { return -1 }
+    var i = slen - sublen
+    do {
+        var chunk = s[i:i + sublen]
+        if chunk == sub { return i }
+        i = i - 1
+    } til i < 0
+    return -1
+}
+
+/// Returns the number of non-overlapping occurrences of sub in s.
+fn str_count(s, sub) {
+    if len(sub) == 0 { return 0 }
+    var count = 0
+    var i = 0
+    do {
+        if i + len(sub) > len(s) { return count }
+        if s[i:i + len(sub)] == sub {
+            count = count + 1
+            i = i + len(sub)
+        } else {
+            i = i + 1
+        }
+    } til i + len(sub) > len(s)
+    return count
+}
+
+// -------------------------------------------------------------------------
+// Type Conversion
+// -------------------------------------------------------------------------
+
+/// Converts any value to its string representation.
+fn str_from(v) {
+    return str(v)
+}
+
+/// Parses a numeric string and returns a number, or null on failure.
+fn str_to_number(s) {
+    var trimmed = trim(s)
+    if len(trimmed) == 0 { return null }
+    var n = float(trimmed)
+    return n
+}
+
+/// Returns true if s represents a valid integer (optional leading sign).
+fn str_is_integer(s) {
+    s = trim(s)
+    if len(s) == 0 { return false }
+    var start = 0
+    if char_at(s, 0) == "-" || char_at(s, 0) == "+" {
+        start = 1
+    }
+    if start >= len(s) { return false }
+    var i = start
+    do {
+        var c = char_at(s, i)
+        var code = ord_val(c)
+        if code < 48 || code > 57 { return false }
+        i = i + 1
+    } til i >= len(s)
+    return true
+}
+
+/// Returns true if s represents a valid decimal number.
+fn str_is_number(s) {
+    s = trim(s)
+    if len(s) == 0 { return false }
+    var start = 0
+    if char_at(s, 0) == "-" || char_at(s, 0) == "+" {
+        start = 1
+    }
+    if start >= len(s) { return false }
+    var has_dot = false
+    var i = start
+    do {
+        var c = char_at(s, i)
+        if c == "." {
+            if has_dot { return false }
+            has_dot = true
+        } else {
+            var code = ord_val(c)
+            if code < 48 || code > 57 { return false }
+        }
+        i = i + 1
+    } til i >= len(s)
+    return true
+}
+
+// -------------------------------------------------------------------------
+// Repetition & Construction
+// -------------------------------------------------------------------------
+
+/// Returns s repeated n times.
+fn str_repeat(s, n) {
+    var result = ""
+    var i = 0
+    do {
+        result = result + s
+        i = i + 1
+    } til i >= n
+    return result
+}
+
+/// Returns a string of n copies of char_s (single character string).
+fn str_fill(char_s, n) {
+    return str_repeat(char_s, n)
+}
+
+// -------------------------------------------------------------------------
+// StringBuilder (dynamic accumulation)
+// -------------------------------------------------------------------------
+
+/// Creates a new string builder (an array acting as a mutable buffer).
+fn str_builder_new() {
+    return []
+}
+
+/// Appends a string segment to the builder.
+fn str_builder_push(builder, s) {
+    return append(builder, s)
+}
+
+/// Appends a string segment followed by a newline.
+fn str_builder_pushln(builder, s) {
+    return append(builder, s + "\n")
+}
+
+/// Flushes the builder into a single joined string.
+fn str_builder_build(builder) {
+    return join("", builder)
+}
+
+/// Returns the total accumulated length of segments in the builder.
+fn str_builder_len(builder) {
+    var total = 0
+    var i = 0
+    do {
+        total = total + len(builder[i])
+        i = i + 1
+    } til i >= len(builder)
+    return total
+}

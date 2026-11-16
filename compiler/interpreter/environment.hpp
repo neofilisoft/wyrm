@@ -124,9 +124,8 @@ public:
     void mark_moved(const std::string& name) {
         auto it = store.find(name);
         if (it != store.end()) {
-            // Drop and null the value before marking moved to prevent double-free in destructor.
             // The ownership of the heap resources has been transferred out of this scope.
-            val_drop(it->second.value);
+            // Null out the slot and mark moved so it is not dropped again in ~Environment().
             it->second.value = val_null();
             it->second.is_moved = true;
             return;

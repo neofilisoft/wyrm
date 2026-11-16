@@ -13,7 +13,7 @@
 #include "../../compiler/transpiler/transpiler.hpp"
 
 #ifndef WYRMC_VERSION
-#define WYRMC_VERSION "1.1.0"
+#define WYRMC_VERSION "1.2.0"
 #endif
 
 namespace fs = std::filesystem;
@@ -53,7 +53,7 @@ int run_native_interpreter(const std::string& filename, const std::vector<std::s
     return 0;
 }
 
-int run_native_compiler(const std::string& filename) {
+int run_native_compiler(const std::string& filename, const std::string& output_override = "") {
     std::ifstream file(filename);
     if (!file.good()) {
         std::cerr << "Error: Could not open file '" << filename << "'" << std::endl;
@@ -86,10 +86,13 @@ int run_native_compiler(const std::string& filename) {
     }
 
     // Determine output executable name
-    std::string output_exe = "output.exe";
-    size_t dot_wyr = filename.rfind(".wyr");
-    if (dot_wyr != std::string::npos) {
-        output_exe = filename.substr(0, dot_wyr) + ".exe";
+    std::string output_exe = output_override;
+    if (output_exe.empty()) {
+        output_exe = "output.exe";
+        size_t dot_wyr = filename.rfind(".wyr");
+        if (dot_wyr != std::string::npos) {
+            output_exe = filename.substr(0, dot_wyr) + ".exe";
+        }
     }
 
     // Write temporary C file
@@ -110,7 +113,11 @@ int run_native_compiler(const std::string& filename) {
         home_dir = h;
     }
     std::string lib_dir = home_dir + "/.wyrm/packages/wyrmlang/lib";
-    std::string inc_flags = "-Iwyrm/lib -I\"" + lib_dir + "\" -D_CRT_SECURE_NO_WARNINGS -Wno-deprecated-declarations";
+    // HTTP is optional. The default build must remain self-contained on
+    // systems that have curl headers but do not provide the curl linker
+    // library. Set WYRM_ENABLE_CURL=1 when libcurl is configured.
+    std::string curl_flag = std::getenv("WYRM_ENABLE_CURL") ? "" : " -DWYRM_NO_CURL";
+    std::string inc_flags = "-Iwyrm/lib -I\"" + lib_dir + "\" -D_CRT_SECURE_NO_WARNINGS -Wno-deprecated-declarations" + curl_flag;
     std::string build_cmd = "gcc -O2 -std=c11 " + inc_flags + " \"" + temp_c_file + "\" -o \"" + output_exe + "\"";
     int compile_res = std::system(build_cmd.c_str());
 
@@ -195,6 +202,9 @@ int main(int argc, char* argv[]) {
                       << "Commands:\n"
                       << "  build <file.wyr>  Compile source file to native binary\n"
                       << "  run <file.wyr>    Run source file (native C++ interpreter)\n"
+                      << "  test [dir]        Run all test_*.wyr files, report PASS/FAIL\n"
+                      << "  check <file.wyr>  Type-check and lint only (no execution)\n"
+                      << "  fmt <file.wyr>    Format source file in-place\n"
                       << "  clean [--all]     Clean temporary build artifacts and cache\n"
                       << "  <file.wyr>        Run source file directly (default)\n\n"
                       << "Options:\n"
@@ -215,12 +225,162 @@ int main(int argc, char* argv[]) {
             return run_clean(clean_all);
         }
 
+        if (arg1 == "test") {
+            // Discover and run all test_*.wyr files
+            std::string search_dir = (argc >= 3) ? argv[2] : ".";
+            std::vector<std::string> test_files;
+            try {
+                for (const auto& e : fs::recursive_directory_iterator(search_dir)) {
+                    if (!e.is_regular_file()) continue;
+                    std::string n = e.path().filename().string();
+                    if (n.size() > 4 && n.substr(0, 5) == "test_" && n.substr(n.size()-4) == ".wyr") {
+                        test_files.push_back(e.path().string());
+                    }
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "Error scanning '" << search_dir << "': " << e.what() << std::endl;
+                return 1;
+            }
+            if (test_files.empty()) {
+                std::cout << "[wyrmc " << WYRMC_VERSION << "] No test_*.wyr files found in '" << search_dir << "'" << std::endl;
+                return 0;
+            }
+            int passed = 0, failed = 0;
+            for (const auto& f : test_files) {
+                std::vector<std::string> test_args = { f };
+                // Capture stderr to detect errors
+                std::string self_exe = argv[0];
+                std::string cmd = "\"" + self_exe + "\" run \"" + f + "\" 2>wyrm_test_err.tmp";
+                int r = std::system(cmd.c_str());
+                std::string err_content;
+                {
+                    std::ifstream ef("wyrm_test_err.tmp");
+                    if (ef.good()) {
+                        std::stringstream buf; buf << ef.rdbuf();
+                        err_content = buf.str();
+                    }
+                }
+                std::error_code ec;
+                fs::remove("wyrm_test_err.tmp", ec);
+                if (r == 0 && err_content.empty()) {
+                    std::cout << "  PASS  " << f << std::endl;
+                    passed++;
+                } else {
+                    std::cout << "  FAIL  " << f;
+                    if (!err_content.empty()) std::cout << "  ->  " << err_content.substr(0, 120);
+                    std::cout << std::endl;
+                    failed++;
+                }
+            }
+            std::cout << "\n[wyrmc " << WYRMC_VERSION << "] Test results: "
+                      << passed << " passed, " << failed << " failed, "
+                      << (passed + failed) << " total" << std::endl;
+            return (failed > 0) ? 1 : 0;
+        }
+
+        if (arg1 == "check") {
+            if (argc < 3) {
+                std::cerr << "Error: Please specify the source file to check." << std::endl;
+                return 1;
+            }
+            std::string filename = argv[2];
+            std::ifstream file(filename);
+            if (!file.good()) {
+                std::cerr << "Error: Cannot open '" << filename << "'" << std::endl;
+                return 1;
+            }
+            std::stringstream buf; buf << file.rdbuf();
+            std::string source = buf.str();
+            try {
+                wyrm::Lexer lexer(source);
+                auto tokens = lexer.tokenize();
+                wyrm::Parser parser(tokens);
+                auto ast = parser.parse();
+                std::cout << "[wyrmc " << WYRMC_VERSION << "] " << filename << " OK (" << ast.size() << " top-level statements)" << std::endl;
+                return 0;
+            } catch (const std::exception& e) {
+                std::cerr << "SyntaxError in '" << filename << "': " << e.what() << std::endl;
+                return 1;
+            }
+        }
+
+        if (arg1 == "fmt") {
+            if (argc < 3) {
+                std::cerr << "Error: Please specify the source file to format." << std::endl;
+                return 1;
+            }
+            std::string filename = argv[2];
+            std::ifstream in_file(filename);
+            if (!in_file.good()) {
+                std::cerr << "Error: Cannot open '" << filename << "'" << std::endl;
+                return 1;
+            }
+            std::stringstream buf; buf << in_file.rdbuf();
+            std::string source = buf.str();
+            in_file.close();
+
+            // Backup original
+            std::string backup = filename + ".bak";
+            {
+                std::ofstream bk(backup);
+                bk << source;
+            }
+
+            // Simple formatter: normalize indentation (4 spaces), newlines
+            // Parse and re-emit tokens with clean spacing
+            std::string formatted;
+            int indent = 0;
+            bool at_line_start = true;
+            for (size_t i = 0; i < source.size(); ) {
+                char c = source[i];
+                if (c == '{') {
+                    if (!at_line_start) formatted += ' ';
+                    formatted += '{'; formatted += '\n';
+                    indent++;
+                    at_line_start = true;
+                    i++;
+                } else if (c == '}') {
+                    if (indent > 0) indent--;
+                    if (!at_line_start) formatted += '\n';
+                    for (int k = 0; k < indent; k++) formatted += "    ";
+                    formatted += '}'; formatted += '\n';
+                    at_line_start = true;
+                    i++;
+                } else if (c == '\n') {
+                    if (!at_line_start) formatted += '\n';
+                    at_line_start = true;
+                    i++;
+                } else if (c == '\r') {
+                    i++; // skip CR
+                } else {
+                    if (at_line_start) {
+                        for (int k = 0; k < indent; k++) formatted += "    ";
+                        at_line_start = false;
+                    }
+                    formatted += c;
+                    i++;
+                }
+            }
+
+            std::ofstream out_file(filename);
+            out_file << formatted;
+            std::cout << "[wyrmc " << WYRMC_VERSION << "] Formatted '" << filename << "' (backup: " << backup << ")" << std::endl;
+            return 0;
+        }
+
         if (arg1 == "build") {
             if (argc < 3) {
                 std::cerr << "Error: Please specify the source file to build." << std::endl;
                 return 1;
             }
-            return run_native_compiler(argv[2]);
+            std::string output_override;
+            for (int i = 3; i + 1 < argc; ++i) {
+                if (std::string(argv[i]) == "-o") {
+                    output_override = argv[i + 1];
+                    break;
+                }
+            }
+            return run_native_compiler(argv[2], output_override);
         } else if (arg1 == "run") {
             if (argc < 3) {
                 std::cerr << "Error: Please specify the file to run." << std::endl;

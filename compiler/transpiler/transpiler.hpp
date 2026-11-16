@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <unordered_set>
+#include <unordered_map>
 #include <memory>
 #include "../ast/ast.hpp"
 
@@ -12,6 +13,7 @@ namespace wyrm {
 struct TranspilerScope {
     std::vector<std::string> arenas;
     std::vector<std::string> allocations;
+    std::vector<std::string> owned_values;
 };
 
 class Transpiler : public ASTVisitor {
@@ -23,6 +25,7 @@ public:
     std::unordered_set<std::string> declared_globals;
     std::unordered_set<std::string> declared_locals;
     std::unordered_set<std::string> constants;
+    std::unordered_map<std::string, std::string> enum_variant_functions;
     
     bool in_function;
     bool has_main_def;
@@ -73,10 +76,21 @@ public:
     void visit(MemberAccessNode* node) override;
     void visit(MemberAssignNode* node) override;
     void visit(MethodCallNode* node) override;
+    // M2
+    void visit(EnumDefNode* node) override;
+    void visit(MatchNode* node) override;
+    // M3
+    void visit(ThrowNode* node) override;
+    void visit(TryCatchNode* node) override;
+    // M5
+    void visit(LambdaNode* node) override;
+    // M6
+    void visit(AwaitNode* node) override;
 
 private:
     std::string last_result_;
     std::string load_c_runtime();
+    int lambda_counter_ = 0; // M5: unique lambda function counter
 };
 
 } // namespace wyrm

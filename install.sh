@@ -14,7 +14,7 @@ VERSION_FILE="$SCRIPT_DIR/VERSION"
 if [ -f "$VERSION_FILE" ]; then
     WYRM_VERSION="$(cat "$VERSION_FILE" | tr -d '[:space:]')"
 else
-    WYRM_VERSION="1.1.0"
+    WYRM_VERSION="1.2.0"
 fi
 
 INSTALL_ROOT="$HOME/.wyrm"

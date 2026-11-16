@@ -1,0 +1,400 @@
+/// std.math - Wyrm Standard Mathematics Library
+/// Provides common numeric functions, constants, and utilities.
+/// All functions operate on the dynamic Value runtime (number type).
+///
+/// Usage:
+///   use std.math;
+///   var x = math_sqrt(2.0)
+///   var y = math_pow(2.0, 10.0)
+///   var c = math_clamp(value, 0.0, 1.0)
+
+// -------------------------------------------------------------------------
+// Constants
+// -------------------------------------------------------------------------
+
+dec MATH_PI  = 3.14159265358979323846
+dec MATH_TAU = 6.28318530717958647692
+dec MATH_E   = 2.71828182845904523536
+dec MATH_LN2  = 0.69314718055994530942
+dec MATH_LN10 = 2.30258509299404568402
+dec MATH_INF  = 1.0e308
+
+// -------------------------------------------------------------------------
+// Rounding
+// -------------------------------------------------------------------------
+
+/// Returns the largest integer less than or equal to x.
+fn math_floor(x) {
+    var n = int(x)
+    if x < 0.0 && float(n) != x {
+        return float(n - 1)
+    }
+    return float(n)
+}
+
+/// Returns the smallest integer greater than or equal to x.
+fn math_ceil(x) {
+    var n = int(x)
+    if x > 0.0 && float(n) != x {
+        return float(n + 1)
+    }
+    return float(n)
+}
+
+/// Returns x rounded to the nearest integer (half-away from zero).
+fn math_round(x) {
+    if x >= 0.0 {
+        return math_floor(x + 0.5)
+    }
+    return math_ceil(x - 0.5)
+}
+
+/// Returns the integer part of x (truncates toward zero).
+fn math_trunc(x) {
+    return float(int(x))
+}
+
+// -------------------------------------------------------------------------
+// Absolute value & Sign
+// -------------------------------------------------------------------------
+
+/// Returns the absolute value of x.
+fn math_abs(x) {
+    if x < 0.0 {
+        return 0.0 - x
+    }
+    return x
+}
+
+/// Returns -1, 0, or 1 depending on the sign of x.
+fn math_sign(x) {
+    if x > 0.0 { return 1.0 }
+    if x < 0.0 { return -1.0 }
+    return 0.0
+}
+
+// -------------------------------------------------------------------------
+// Exponentiation & Roots
+// -------------------------------------------------------------------------
+
+/// Returns base raised to the power of exp (integer exponent, exact).
+fn math_pow(base, exp) {
+    return base ** exp
+}
+
+/// Returns the square root of x using Newton-Raphson iteration.
+/// Returns 0.0 for negative input.
+fn math_sqrt(x) {
+    if x < 0.0 { return 0.0 }
+    if x == 0.0 { return 0.0 }
+    var guess = x / 2.0
+    var i = 0
+    do {
+        var next = (guess + x / guess) / 2.0
+        var diff = next - guess
+        if diff < 0.0 { diff = 0.0 - diff }
+        if diff < 0.000000001 {
+            return next
+        }
+        guess = next
+        i = i + 1
+    } til i >= 60
+    return guess
+}
+
+/// Returns the cube root of x.
+fn math_cbrt(x) {
+    if x == 0.0 { return 0.0 }
+    var sign = math_sign(x)
+    var ax = math_abs(x)
+    var guess = ax / 3.0
+    var i = 0
+    do {
+        var next = (2.0 * guess + ax / (guess * guess)) / 3.0
+        var diff = next - guess
+        if diff < 0.0 { diff = 0.0 - diff }
+        if diff < 0.000000001 {
+            return sign * next
+        }
+        guess = next
+        i = i + 1
+    } til i >= 60
+    return sign * guess
+}
+
+/// Returns the natural logarithm of x (ln x) using series expansion.
+/// Returns 0.0 for x <= 0.
+fn math_log(x) {
+    if x <= 0.0 { return 0.0 }
+    if x == 1.0 { return 0.0 }
+    // Reduce: x = 2^k * m where 0.5 <= m < 1
+    var k = 0
+    var m = x
+    do {} til m < 2.0 || k > 1000
+    do {} til m >= 1.0 || k < -1000
+
+    // Use: ln(x) = 2 * atanh((x-1)/(x+1)) via series
+    var y = (x - 1.0) / (x + 1.0)
+    var y2 = y * y
+    var term = y
+    var sum = y
+    var n = 1
+    do {
+        term = term * y2
+        n = n + 2
+        var delta = term / float(n)
+        sum = sum + delta
+        if delta < 0.0 { delta = 0.0 - delta }
+    } til delta < 0.0000000001 || n > 200
+    return 2.0 * sum
+}
+
+/// Returns the base-10 logarithm of x.
+fn math_log10(x) {
+    return math_log(x) / MATH_LN10
+}
+
+/// Returns the base-2 logarithm of x.
+fn math_log2(x) {
+    return math_log(x) / MATH_LN2
+}
+
+/// Returns e raised to the power x (e^x) using Taylor series.
+fn math_exp(x) {
+    var sum = 1.0
+    var term = 1.0
+    var n = 1
+    do {
+        term = term * x / float(n)
+        sum = sum + term
+        n = n + 1
+        var abs_term = term
+        if abs_term < 0.0 { abs_term = 0.0 - abs_term }
+    } til abs_term < 0.0000000001 || n > 150
+    return sum
+}
+
+// -------------------------------------------------------------------------
+// Trigonometry
+// -------------------------------------------------------------------------
+
+/// Normalizes angle x to the range [-PI, PI].
+fn math_normalize_angle(x) {
+    var twopi = MATH_TAU
+    do {
+        if x > MATH_PI { x = x - twopi }
+        if x < -MATH_PI { x = x + twopi }
+    } til x >= -MATH_PI && x <= MATH_PI
+    return x
+}
+
+/// Returns the sine of x (radians) using Taylor series.
+fn math_sin(x) {
+    x = math_normalize_angle(x)
+    var sum = x
+    var term = x
+    var x2 = x * x
+    var n = 1
+    do {
+        term = term * (0.0 - x2) / float((2 * n) * (2 * n + 1))
+        sum = sum + term
+        n = n + 1
+        var abs_term = term
+        if abs_term < 0.0 { abs_term = 0.0 - abs_term }
+    } til abs_term < 0.0000000001 || n > 20
+    return sum
+}
+
+/// Returns the cosine of x (radians) using Taylor series.
+fn math_cos(x) {
+    x = math_normalize_angle(x)
+    var sum = 1.0
+    var term = 1.0
+    var x2 = x * x
+    var n = 1
+    do {
+        term = term * (0.0 - x2) / float((2 * n - 1) * (2 * n))
+        sum = sum + term
+        n = n + 1
+        var abs_term = term
+        if abs_term < 0.0 { abs_term = 0.0 - abs_term }
+    } til abs_term < 0.0000000001 || n > 20
+    return sum
+}
+
+/// Returns the tangent of x (radians).
+fn math_tan(x) {
+    var c = math_cos(x)
+    if c == 0.0 { return MATH_INF }
+    return math_sin(x) / c
+}
+
+/// Converts degrees to radians.
+fn math_radians(deg) {
+    return deg * MATH_PI / 180.0
+}
+
+/// Converts radians to degrees.
+fn math_degrees(rad) {
+    return rad * 180.0 / MATH_PI
+}
+
+// -------------------------------------------------------------------------
+// Hyperbolic
+// -------------------------------------------------------------------------
+
+/// Returns the hyperbolic sine of x.
+fn math_sinh(x) {
+    return (math_exp(x) - math_exp(0.0 - x)) / 2.0
+}
+
+/// Returns the hyperbolic cosine of x.
+fn math_cosh(x) {
+    return (math_exp(x) + math_exp(0.0 - x)) / 2.0
+}
+
+/// Returns the hyperbolic tangent of x.
+fn math_tanh(x) {
+    var ep = math_exp(x)
+    var em = math_exp(0.0 - x)
+    return (ep - em) / (ep + em)
+}
+
+// -------------------------------------------------------------------------
+// Min / Max / Clamp
+// -------------------------------------------------------------------------
+
+/// Returns the smaller of a and b.
+fn math_min(a, b) {
+    if a < b { return a }
+    return b
+}
+
+/// Returns the larger of a and b.
+fn math_max(a, b) {
+    if a > b { return a }
+    return b
+}
+
+/// Clamps value x to the closed interval [lo, hi].
+fn math_clamp(x, lo, hi) {
+    return math_max(lo, math_min(hi, x))
+}
+
+// -------------------------------------------------------------------------
+// Numeric Utilities
+// -------------------------------------------------------------------------
+
+/// Returns true if x is approximately zero (within epsilon).
+fn math_is_zero(x, epsilon) {
+    return math_abs(x) <= epsilon
+}
+
+/// Returns true if a and b are within epsilon of each other.
+fn math_approx_eq(a, b, epsilon) {
+    return math_abs(a - b) <= epsilon
+}
+
+/// Returns x mod m (always non-negative, like Python's % operator).
+fn math_fmod(x, m) {
+    if m == 0.0 { return 0.0 }
+    var r = x - math_floor(x / m) * m
+    return r
+}
+
+/// Performs linear interpolation between a and b at position t in [0, 1].
+fn math_lerp(a, b, t) {
+    return a + (b - a) * t
+}
+
+/// Normalizes x from range [lo, hi] to [0, 1].
+fn math_normalize(x, lo, hi) {
+    if hi == lo { return 0.0 }
+    return (x - lo) / (hi - lo)
+}
+
+/// Remaps x from range [a0, a1] to range [b0, b1].
+fn math_remap(x, a0, a1, b0, b1) {
+    return b0 + (x - a0) * (b1 - b0) / (a1 - a0)
+}
+
+/// Returns the integer part of x divided by divisor (floor quotient).
+fn math_divmod(x, divisor) {
+    var q = math_floor(x / divisor)
+    var r = x - q * divisor
+    return [q, r]
+}
+
+/// Returns the greatest common divisor of two non-negative integers.
+fn math_gcd(a, b) {
+    a = math_abs(a)
+    b = math_abs(b)
+    do {
+        if b == 0.0 { return a }
+        var temp = b
+        b = math_fmod(a, b)
+        a = temp
+    } til b == 0.0
+    return a
+}
+
+/// Returns the least common multiple of two non-negative integers.
+fn math_lcm(a, b) {
+    var g = math_gcd(a, b)
+    if g == 0.0 { return 0.0 }
+    return math_abs(a * b) / g
+}
+
+/// Returns true if n is a prime number (trial division).
+fn math_is_prime(n) {
+    n = math_abs(math_trunc(n))
+    if n < 2.0 { return false }
+    if n == 2.0 { return true }
+    if math_fmod(n, 2.0) == 0.0 { return false }
+    var i = 3.0
+    do {
+        if math_fmod(n, i) == 0.0 { return false }
+        i = i + 2.0
+    } til i * i > n
+    return true
+}
+
+/// Returns the sum of a numeric array.
+fn math_sum(arr) {
+    var s = 0.0
+    var i = 0
+    do {
+        s = s + arr[i]
+        i = i + 1
+    } til i >= len(arr)
+    return s
+}
+
+/// Returns the arithmetic mean of a non-empty numeric array.
+fn math_mean(arr) {
+    var n = len(arr)
+    if n == 0 { return 0.0 }
+    return math_sum(arr) / float(n)
+}
+
+/// Returns the minimum value in a non-empty numeric array.
+fn math_array_min(arr) {
+    var m = arr[0]
+    var i = 1
+    do {
+        if arr[i] < m { m = arr[i] }
+        i = i + 1
+    } til i >= len(arr)
+    return m
+}
+
+/// Returns the maximum value in a non-empty numeric array.
+fn math_array_max(arr) {
+    var m = arr[0]
+    var i = 1
+    do {
+        if arr[i] > m { m = arr[i] }
+        i = i + 1
+    } til i >= len(arr)
+    return m
+}

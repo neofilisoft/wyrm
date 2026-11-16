@@ -410,7 +410,17 @@ void Interpreter::visit(IndexAssignNode* node) {
 }
 
 void Interpreter::visit(ReturnNode* node) {
-    Value val = node->expr ? evaluate(node->expr.get()) : val_null();
+    Value val = val_null();
+    if (node->expr) {
+        val = evaluate(node->expr.get());
+        if (auto* id = dynamic_cast<IdentifierNode*>(node->expr.get())) {
+            if (current_env->is_owned(id->name)) {
+                current_env->mark_moved(id->name);
+            } else {
+                val = val_copy(val);
+            }
+        }
+    }
     throw ReturnSignal{val};
 }
 
@@ -696,6 +706,255 @@ void Interpreter::visit(MethodCallNode* node) {
     }
 
     throw std::runtime_error("Cannot call method '" + node->method_name + "' on non-struct value");
+}
+
+// ===========================================================================
+// M2: EnumVariantConstructor::call
+// Creates a struct-like Value with type_name = "EnumName::VariantName"
+// ===========================================================================
+Value EnumVariantConstructor::call(const std::vector<Value>& args, Interpreter* /*interp*/) {
+    std::string tag = enum_name + "::" + variant_name;
+    if (fields.empty()) {
+        // Unit variant - create a struct with just a tag field
+        const char* fnames[] = { "__tag__" };
+        Value fvals[] = { val_string(tag.c_str()) };
+        Value result = val_struct_create(tag.c_str(), 1, fnames, fvals);
+        val_drop(fvals[0]);
+        return result;
+    }
+    // Payload variant - bind positional args to field names
+    size_t count = std::min(fields.size(), args.size());
+    std::vector<const char*> fnames_raw;
+    std::vector<Value> fvals;
+    fnames_raw.push_back("__tag__");
+    fvals.push_back(val_string(tag.c_str()));
+    for (size_t i = 0; i < count; i++) {
+        fnames_raw.push_back(fields[i].c_str());
+        fvals.push_back(val_copy(args[i]));
+    }
+    Value result = val_struct_create(tag.c_str(),
+        (int)fnames_raw.size(),
+        fnames_raw.data(),
+        fvals.data());
+    for (auto& value : fvals) val_drop(value);
+    return result;
+}
+
+// ===========================================================================
+// M2: visit(EnumDefNode*)
+// Registers each variant as a callable constructor in the environment
+// ===========================================================================
+void Interpreter::visit(EnumDefNode* node) {
+    for (const auto& variant : node->variants) {
+        auto* ctor = new EnumVariantConstructor(node->name, variant.name, variant.fields);
+        callables_alive_.emplace_back(ctor);
+        // Register as enum_name::VariantName and VariantName (short form)
+        std::string full_name = node->name + "::" + variant.name;
+        current_env->define(full_name, val_raw_ptr(ctor));
+        current_env->define(variant.name, val_raw_ptr(ctor));
+    }
+    last_value_ = val_null();
+}
+
+// ===========================================================================
+// M2: visit(MatchNode*)
+// Evaluates subject, then iterates arms looking for variant or wildcard match
+// ===========================================================================
+void Interpreter::visit(MatchNode* node) {
+    Value subject = evaluate(node->subject.get());
+    // Identifier evaluation borrows the value stored in its environment. A
+    // match consumes its temporary subject at the end, so retain structs and
+    // other reference-counted values before that cleanup happens.
+    if (dynamic_cast<IdentifierNode*>(node->subject.get())) {
+        subject = val_copy(subject);
+    }
+
+    // Extract the __tag__ field from the subject (if it is a struct with a tag)
+    std::string subject_tag;
+    if (subject.type == VAL_STRUCT && subject.as.structure) {
+        Value tag_val = val_struct_get(subject, "__tag__");
+        if (tag_val.type == VAL_STRING && tag_val.as.string) {
+            subject_tag = tag_val.as.string;
+        }
+        val_drop(tag_val);
+    } else if (subject.type == VAL_STRING && subject.as.string) {
+        subject_tag = subject.as.string;
+    }
+
+    bool matched = false;
+    for (auto& arm : node->arms) {
+        bool arm_matches = false;
+        if (arm.variant_name == "_") {
+            // Wildcard
+            arm_matches = true;
+        } else {
+            // Match by exact variant name or full tag (EnumName::VariantName)
+            arm_matches = (arm.variant_name == subject_tag) ||
+                          (subject_tag.size() >= arm.variant_name.size() &&
+                           subject_tag.substr(subject_tag.size() - arm.variant_name.size()) == arm.variant_name);
+        }
+
+        if (arm_matches) {
+            // Create new scope for this arm
+            auto arm_env = std::make_shared<Environment>(current_env.get());
+            // Bind fields to binding names
+            for (size_t i = 0; i < arm.bindings.size(); i++) {
+                if (!arm.bindings[i].empty()) {
+                    // Try to get field by index from the struct
+                    if (subject.type == VAL_STRUCT && subject.as.structure) {
+                        // Fields: index 0 = __tag__, index 1+ = payload fields
+                        Value field_val = val_null();
+                        int field_idx = (int)(i + 1);
+                        if (subject.as.structure->field_count > field_idx) {
+                            field_val = val_copy(subject.as.structure->fields[field_idx]);
+                        }
+                        arm_env->define(arm.bindings[i], field_val);
+                        val_drop(field_val);
+                    }
+                }
+            }
+            auto saved_env = current_env;
+            current_env = arm_env;
+            try {
+                for (auto& stmt : arm.body) {
+                    execute_statement(stmt.get());
+                }
+            } catch (...) {
+                current_env = saved_env;
+                val_drop(subject);
+                throw;
+            }
+            current_env = saved_env;
+            matched = true;
+            break;
+        }
+    }
+    if (!matched) {
+        // Non-exhaustive match is a runtime error
+        throw std::runtime_error("RuntimeError: Non-exhaustive match - no arm matched value '" + subject_tag + "'");
+    }
+    val_drop(subject);
+    last_value_ = val_null();
+}
+
+// ===========================================================================
+// M3: visit(ThrowNode*)
+// Evaluates the expression and throws a WyrmThrowSignal
+// ===========================================================================
+void Interpreter::visit(ThrowNode* node) {
+    Value v = evaluate(node->expr.get());
+    throw WyrmThrowSignal(v);
+}
+
+// ===========================================================================
+// M3: visit(TryCatchNode*)
+// Executes try body; catches WyrmThrowSignal or std::exception in catch block
+// ===========================================================================
+void Interpreter::visit(TryCatchNode* node) {
+    bool caught = false;
+    try {
+        auto try_env = std::make_shared<Environment>(current_env.get());
+        auto saved = current_env;
+        current_env = try_env;
+        try {
+            for (auto& stmt : node->try_body) {
+                execute_statement(stmt.get());
+            }
+        } catch (...) {
+            current_env = saved;
+            throw;
+        }
+        current_env = saved;
+    } catch (const WyrmThrowSignal& sig) {
+        caught = true;
+        auto catch_env = std::make_shared<Environment>(current_env.get());
+        if (!node->catch_var.empty() && node->catch_var != "_err") {
+            catch_env->define(node->catch_var, val_copy(sig.value));
+        } else {
+            catch_env->define(node->catch_var, val_copy(sig.value));
+        }
+        auto saved = current_env;
+        current_env = catch_env;
+        try {
+            for (auto& stmt : node->catch_body) {
+                execute_statement(stmt.get());
+            }
+        } catch (...) {
+            current_env = saved;
+            // Run finally even when catch throws
+            if (!node->finally_body.empty()) {
+                auto saved2 = current_env;
+                for (auto& stmt : node->finally_body) {
+                    try { execute_statement(stmt.get()); } catch (...) {}
+                }
+                current_env = saved2;
+            }
+            throw;
+        }
+        current_env = saved;
+    } catch (const std::exception& ex) {
+        caught = true;
+        auto catch_env = std::make_shared<Environment>(current_env.get());
+        catch_env->define(node->catch_var, val_string(ex.what()));
+        auto saved = current_env;
+        current_env = catch_env;
+        try {
+            for (auto& stmt : node->catch_body) {
+                execute_statement(stmt.get());
+            }
+        } catch (...) {
+            current_env = saved;
+            if (!node->finally_body.empty()) {
+                for (auto& stmt : node->finally_body) {
+                    try { execute_statement(stmt.get()); } catch (...) {}
+                }
+            }
+            throw;
+        }
+        current_env = saved;
+    }
+    (void)caught;
+    // Run finally block unconditionally
+    if (!node->finally_body.empty()) {
+        auto saved = current_env;
+        for (auto& stmt : node->finally_body) {
+            execute_statement(stmt.get());
+        }
+    }
+    last_value_ = val_null();
+}
+
+// ===========================================================================
+// M5: visit(LambdaNode*)
+// Creates a closure (Function) capturing the current environment
+// ===========================================================================
+void Interpreter::visit(LambdaNode* node) {
+    std::vector<std::string> param_names;
+    param_names.reserve(node->params.size());
+    for (auto& p : node->params) {
+        param_names.push_back(p->name);
+    }
+    std::vector<ASTNode*> body_ptrs;
+    body_ptrs.reserve(node->body.size());
+    for (auto& s : node->body) {
+        body_ptrs.push_back(s.get());
+    }
+    // Closure captures the current environment
+    auto closure_fn = std::make_unique<Function>(
+        "<lambda>", std::move(param_names), std::move(body_ptrs), current_env
+    );
+    Function* raw = closure_fn.get();
+    callables_alive_.push_back(std::move(closure_fn));
+    last_value_ = val_raw_ptr(raw);
+}
+
+// ===========================================================================
+// M6: visit(AwaitNode*)
+// Sequential execution: await evaluates expression immediately (no suspension)
+// ===========================================================================
+void Interpreter::visit(AwaitNode* node) {
+    // Sequential semantics: evaluate the expression synchronously
+    last_value_ = evaluate(node->expr.get());
 }
 
 } // namespace wyrm

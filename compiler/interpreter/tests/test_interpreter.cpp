@@ -232,6 +232,29 @@ void test_interp_arena_memory() {
     std::cout << "test_interp_arena_memory passed!" << std::endl;
 }
 
+void test_interp_readme_match_syntax() {
+    std::cout << "Running test_interp_readme_match_syntax..." << std::endl;
+    std::string_view code =
+        "enum Shape { Circle(radius), Rect(width, height) }\n"
+        "var area = 0\n"
+        "var shape = Circle(5)\n"
+        "match shape {\n"
+        "    case Circle(r) -> area = r * r\n"
+        "    case Rect(w, h) -> area = w * h\n"
+        "    default -> area = -1\n"
+        "}\n";
+
+    Lexer lexer(code);
+    Parser parser(lexer.tokenize());
+    auto ast = parser.parse();
+    Interpreter interpreter;
+    interpreter.execute(ast);
+
+    Value area = interpreter.global_env->get("area");
+    assert(area.type == VAL_NUMBER && area.as.number == 25.0);
+    std::cout << "test_interp_readme_match_syntax passed!" << std::endl;
+}
+
 int main() {
     std::cout << "=== Running Wyrm Interpreter Native C++20 Tests ===" << std::endl;
     test_interp_basic();
@@ -243,6 +266,7 @@ int main() {
     test_interp_arrays();
     test_interp_unsafe_memory();
     test_interp_arena_memory();
+    test_interp_readme_match_syntax();
     std::cout << "=== All Interpreter Tests Passed Successfully ===" << std::endl;
     return 0;
 }

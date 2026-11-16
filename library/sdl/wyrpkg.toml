@@ -1,0 +1,9 @@
+[package]
+name = "sdl"
+version = "1.0.0"
+entry = "mod.wyr"
+authors = ["Wyrm Community"]
+license = "MIT"
+description = "External SDL2 dynamic binding package for Wyrm"
+
+[dependencies]

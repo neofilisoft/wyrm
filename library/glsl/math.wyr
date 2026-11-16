@@ -1,0 +1,173 @@
+// Wyrm GLSL Math Library - Common & Trigonometric Functions
+// Aligned with the OpenGL Shading Language (GLSL) Specification
+
+var PI = 3.14159265358979323846
+var TWO_PI = 6.28318530717958647692
+var HALF_PI = 1.57079632679489661923
+var E = 2.71828182845904523536
+var DEG2RAD = 0.01745329251994329577
+var RAD2DEG = 57.29577951308232087680
+
+// --- Angle & Trigonometry ---
+
+fn radians(deg) {
+    return deg * DEG2RAD
+}
+
+fn degrees(rad) {
+    return rad * RAD2DEG
+}
+
+fn sin(x) {
+    var k = int(x / TWO_PI)
+    var r = x - float(k) * TWO_PI
+    if r > PI { r = r - TWO_PI }
+    if r < -PI { r = r + TWO_PI }
+    if r > HALF_PI { r = PI - r }
+    if r < -HALF_PI { r = -PI - r }
+    var r2 = r * r
+    var r3 = r * r2
+    var r5 = r3 * r2
+    var r7 = r5 * r2
+    var r9 = r7 * r2
+    var r11 = r9 * r2
+    return r - (r3 / 6.0) + (r5 / 120.0) - (r7 / 5040.0) + (r9 / 362880.0) - (r11 / 39916800.0)
+}
+
+fn cos(x) {
+    return sin(x + HALF_PI)
+}
+
+fn tan(x) {
+    var c = cos(x)
+    if abs(c) < 0.00000001 {
+        if c < 0.0 { return -100000000.0 }
+        return 100000000.0
+    }
+    return sin(x) / c
+}
+
+fn asin(x) {
+    if x < -1.0 { x = -1.0 }
+    if x > 1.0 { x = 1.0 }
+    // Taylor approximation near 0, with transform near extremes
+    var negate = false
+    if x < 0.0 {
+        negate = true
+        x = -x
+    }
+    var res = x + (x * x * x) / 6.0 + (3.0 * x * x * x * x * x) / 40.0 + (5.0 * x * x * x * x * x * x * x) / 112.0
+    if negate { return -res }
+    return res
+}
+
+fn acos(x) {
+    return HALF_PI - asin(x)
+}
+
+fn atan2(y, x) {
+    if x == 0.0 {
+        if y > 0.0 { return HALF_PI }
+        if y < 0.0 { return -HALF_PI }
+        return 0.0
+    }
+    var z = y / x
+    // Polynomial approximation of atan(z)
+    var a = 0.0
+    if abs(z) < 1.0 {
+        a = z / (1.0 + 0.28 * z * z)
+    } else {
+        if z > 0.0 {
+            a = HALF_PI - z / (z * z + 0.28)
+        } else {
+            a = -HALF_PI - z / (z * z + 0.28)
+        }
+    }
+    if x < 0.0 {
+        if y >= 0.0 { return a + PI }
+        return a - PI
+    }
+    return a
+}
+
+fn atan(y_over_x) {
+    return atan2(y_over_x, 1.0)
+}
+
+// --- Exponential & Power Functions ---
+
+fn sqrt(x) {
+    if x <= 0.0 { return 0.0 }
+    return pow(x, 0.5)
+}
+
+fn inversesqrt(x) {
+    if x <= 0.0 { return 0.0 }
+    return pow(x, -0.5)
+}
+
+fn exp(x) {
+    return pow(E, x)
+}
+
+// --- Common Functions ---
+
+fn sign(x) {
+    if x > 0.0 { return 1.0 }
+    if x < 0.0 { return -1.0 }
+    return 0.0
+}
+
+fn floor(x) {
+    var i = int(x)
+    var f = float(i)
+    if x < 0.0 and x != f {
+        return f - 1.0
+    }
+    return f
+}
+
+fn ceil(x) {
+    var i = int(x)
+    var f = float(i)
+    if x > 0.0 and x != f {
+        return f + 1.0
+    }
+    return f
+}
+
+fn fract(x) {
+    return x - floor(x)
+}
+
+fn mod(x, y) {
+    return x - y * floor(x / y)
+}
+
+fn min(a, b) {
+    if a < b { return a }
+    return b
+}
+
+fn max(a, b) {
+    if a > b { return a }
+    return b
+}
+
+fn clamp(x, min_val, max_val) {
+    return min(max(x, min_val), max_val)
+}
+
+fn mix(x, y, a) {
+    return x * (1.0 - a) + y * a
+}
+
+fn step(edge, x) {
+    if x < edge { return 0.0 }
+    return 1.0
+}
+
+fn smoothstep(edge0, edge1, x) {
+    var t = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
+}

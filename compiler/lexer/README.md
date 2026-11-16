@@ -58,9 +58,9 @@ The Lexer categorizes input character sequences into the following standard toke
 ## Lexing Behavior & Design Rules
 
 1. **Greedy Operator Matching**:
-   Operators are scanned using greedy matching up to 10 characters to correctly resolve compound operators (e.g. `==` before `=`, `&&` before `&`).
+   Operators are scanned using greedy matching up to 3 characters to correctly resolve compound operators (e.g. `->`, `==`, and `&&` before their shorter prefixes).
 2. **Comment Isolation**:
-   Single-line comments starting with `//` are skipped. In accordance with Wyrm syntax rules, `//` is only allowed at the beginning of a line (or preceded only by whitespace/newlines). Comments occurring mid-statement trigger a lexical `SyntaxError`.
+   Single-line comments starting with `//` are skipped only at the beginning of a logical line. Elsewhere, `//` is the floor-division operator. This keeps the two meanings unambiguous without guesswork by the lexer.
 3. **Floating-point Dot Ambiguity**:
    The compiler isolates floating-point numbers from member access dot operators. A period `.` is only parsed as part of a `FLOAT` literal if it is followed by a digit. If followed by an alphabetic char (like `buf.alloc`), the `.` is tokenized as a `DELIMITER` followed by an `IDENTIFIER`.
 4. **Error Handling**:

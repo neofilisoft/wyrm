@@ -39,6 +39,11 @@ void register_thread(Environment& env);
 void register_collections(Environment& env);
 void register_random(Environment& env);
 void register_time(Environment& env);
+void register_os(Environment& env);
+void register_fs(Environment& env);
+void register_path(Environment& env);
+void register_io(Environment& env);
+void register_http(Environment& env);
 
 } // namespace stdlib
 } // namespace wyrm

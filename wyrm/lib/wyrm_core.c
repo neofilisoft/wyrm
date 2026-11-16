@@ -745,7 +745,7 @@ Value val_struct_create(const char *type_name, int field_count, const char **fie
         for (int i = 0; i < field_count; i++) {
             s->field_names[i] = strdup(field_names && field_names[i] ? field_names[i] : "");
             wyrm_check_oom(s->field_names[i], "val_struct_create (field_name string)");
-            s->fields[i] = initial_fields ? initial_fields[i] : val_null();
+            s->fields[i] = initial_fields ? val_copy(initial_fields[i]) : val_null();
         }
     } else {
         s->field_names = NULL;

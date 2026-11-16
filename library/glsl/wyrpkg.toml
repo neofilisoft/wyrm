@@ -1,0 +1,8 @@
+[package]
+name = "glsl"
+version = "1.0.0"
+entry = "mod.wyr"
+authors = ["Wyrm Graphics Team"]
+license = "MIT"
+
+[dependencies]

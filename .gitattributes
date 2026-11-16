@@ -50,3 +50,15 @@ __pycache__/** linguist-vendored=true
 # Package metadata cache
 wyrmlang.egg-info/** linguist-generated=true
 
+# --- Third-party C/C++ in library/glsl (glslang, gtests, kokoro) ---
+library/glsl/glslang/** linguist-vendored=true
+library/glsl/gtests/** linguist-vendored=true
+library/glsl/kokoro/** linguist-vendored=true
+library/glsl/ndk_test/** linguist-vendored=true
+
+# --- Tooling and Extension assets ---
+extension/** linguist-vendored=true
+dist/** linguist-vendored=true
+scoop/** linguist-vendored=true
+scripts/** linguist-vendored=true
+

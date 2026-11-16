@@ -173,16 +173,14 @@ void test_comments() {
     auto tokens1 = lexer1.tokenize();
     assert(tokens1.size() > 0);
 
-    // Comment in middle of statement raises SyntaxError
-    std::string_view invalid_code = "x = 10 // comment here";
-    Lexer lexer2(invalid_code);
-    bool caught = false;
-    try {
-        lexer2.tokenize();
-    } catch (const std::runtime_error& e) {
-        caught = true;
-    }
-    assert(caught);
+    // Away from the beginning of a logical line, // is floor division.
+    std::string_view division_code = "x = 10 // 2";
+    Lexer lexer2(division_code);
+    auto tokens2 = lexer2.tokenize();
+    const auto floor_div = std::find_if(tokens2.begin(), tokens2.end(), [](const Token& token) {
+        return token.type == TokenType::OPERATOR && token.value == "//";
+    });
+    assert(floor_div != tokens2.end());
 
     std::cout << "test_comments passed!" << std::endl;
 }

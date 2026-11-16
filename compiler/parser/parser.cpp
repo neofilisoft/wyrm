@@ -109,6 +109,27 @@ ASTNodePtr Parser::statement() {
                 return variable_declaration(current_token_->value);
             } else if (current_token_->value == "true" || current_token_->value == "false" || current_token_->value == "null") {
                 return expression_statement();
+            // M2
+            } else if (current_token_->value == "enum") {
+                return enum_def();
+            } else if (current_token_->value == "match") {
+                return match_statement();
+            // M3
+            } else if (current_token_->value == "try") {
+                return try_catch_statement();
+            } else if (current_token_->value == "throw") {
+                return throw_statement();
+            // M6: async fn
+            } else if (current_token_->value == "async") {
+                advance(); // consume 'async'
+                if (current_token_ && current_token_->value == "fn") {
+                    auto fn = function_def();
+                    if (auto* fd = dynamic_cast<FunctionDefNode*>(fn.get())) {
+                        fd->is_async = true;
+                    }
+                    return fn;
+                }
+                throw std::runtime_error("SyntaxError: 'async' must be followed by 'fn' at line " + std::to_string(current_token_ ? current_token_->line : 0));
             }
         } else if (current_token_->type == TokenType::IDENTIFIER) {
             // Peek ahead for assignment or method call
@@ -707,6 +728,12 @@ ASTNodePtr Parser::unary() {
             std::move(args)
         );
     }
+    // M6: await expr
+    if (current_token_ && current_token_->type == TokenType::KEYWORD && current_token_->value == "await") {
+        advance(); // consume 'await'
+        ASTNodePtr expr = unary();
+        return std::make_unique<AwaitNode>(std::move(expr));
+    }
     if (current_token_ && current_token_->type == TokenType::OPERATOR && 
         (current_token_->value == "not" || current_token_->value == "!" || 
          current_token_->value == "-" || current_token_->value == "+")) {
@@ -721,6 +748,38 @@ ASTNodePtr Parser::unary() {
 ASTNodePtr Parser::primary() {
     if (!current_token_) {
         throw std::runtime_error("Unexpected end of input");
+    }
+
+    // M5: Lambda/closure: fn(params) { body }
+    // Detected when 'fn' appears in expression context (no name before '(')
+    if (current_token_->type == TokenType::KEYWORD && current_token_->value == "fn") {
+        const Token* p = peek(1);
+        if (p && p->type == TokenType::DELIMITER && p->value == "(") {
+            advance(); // consume 'fn'
+            advance(); // consume '('
+            std::vector<std::unique_ptr<IdentifierNode>> params;
+            std::vector<std::string> param_types;
+            while (current_token_ && !(current_token_->type == TokenType::DELIMITER && current_token_->value == ")")) {
+                if (current_token_->type == TokenType::NEWLINE) { advance(); continue; }
+                if (current_token_->type == TokenType::IDENTIFIER || current_token_->type == TokenType::KEYWORD) {
+                    Token pt = *current_token_;
+                    advance();
+                    std::string type_ann;
+                    if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == ":") {
+                        advance();
+                        if (current_token_) { type_ann = current_token_->value; advance(); }
+                    }
+                    params.push_back(std::make_unique<IdentifierNode>(pt));
+                    param_types.push_back(type_ann);
+                }
+                if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == ",") {
+                    advance();
+                } else break;
+            }
+            expect(TokenType::DELIMITER, ")");
+            auto body = parse_block();
+            return std::make_unique<LambdaNode>(std::move(params), std::move(param_types), std::move(body));
+        }
     }
 
     if (current_token_->type == TokenType::INT || current_token_->type == TokenType::FLOAT) {
@@ -743,7 +802,8 @@ ASTNodePtr Parser::primary() {
     } else if (current_token_->type == TokenType::KEYWORD && 
                (current_token_->value == "int" || current_token_->value == "float" || current_token_->value == "str" || 
                 current_token_->value == "len" || current_token_->value == "input" || current_token_->value == "append" || 
-                current_token_->value == "pop" || current_token_->value == "print")) {
+                current_token_->value == "pop" || current_token_->value == "weak" ||
+                current_token_->value == "lock" || current_token_->value == "print")) {
         std::string func_name = current_token_->value;
         Token name_tok(TokenType::IDENTIFIER, func_name, current_token_->line, current_token_->column);
         advance(); // consume builtin keyword
@@ -893,6 +953,219 @@ ASTNodePtr Parser::primary() {
                              std::to_string(current_token_->line) + ", column " + 
                              std::to_string(current_token_->column) + ". Context:" + context);
     return nullptr;
+}
+
+// =============================================================================
+// M4 helper: parse_type_params - parses optional <T, U, ...> after fn/struct
+// =============================================================================
+std::vector<std::string> Parser::parse_type_params() {
+    std::vector<std::string> params;
+    // Check for '<' - but '<' is an OPERATOR in the token stream
+    if (!current_token_ || current_token_->type != TokenType::OPERATOR || current_token_->value != "<") {
+        return params;
+    }
+    advance(); // consume '<'
+    while (current_token_ && !(current_token_->type == TokenType::OPERATOR && current_token_->value == ">")) {
+        if (current_token_->type == TokenType::NEWLINE) { advance(); continue; }
+        if (current_token_->type == TokenType::IDENTIFIER || current_token_->type == TokenType::KEYWORD) {
+            params.push_back(current_token_->value);
+            advance();
+        }
+        if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == ",") {
+            advance();
+        } else {
+            break;
+        }
+    }
+    if (current_token_ && current_token_->type == TokenType::OPERATOR && current_token_->value == ">") {
+        advance(); // consume '>'
+    }
+    return params;
+}
+
+// =============================================================================
+// Helper: parse_block - parses { stmt... }
+// =============================================================================
+std::vector<ASTNodePtr> Parser::parse_block() {
+    expect(TokenType::DELIMITER, "{");
+    std::vector<ASTNodePtr> body;
+    while (current_token_ && !(current_token_->type == TokenType::DELIMITER && current_token_->value == "}")) {
+        if (current_token_->type == TokenType::NEWLINE) { advance(); continue; }
+        ASTNodePtr s = statement();
+        if (s) body.push_back(std::move(s));
+    }
+    expect(TokenType::DELIMITER, "}");
+    return body;
+}
+
+// =============================================================================
+// M2: enum_def - parses: enum Color { Red, Green, Blue(val: i32) }
+// =============================================================================
+ASTNodePtr Parser::enum_def() {
+    advance(); // consume 'enum'
+    if (!current_token_ || current_token_->type != TokenType::IDENTIFIER) {
+        throw std::runtime_error("SyntaxError: Expected enum name at line " + std::to_string(current_token_ ? current_token_->line : 0));
+    }
+    std::string enum_name = current_token_->value;
+    advance();
+
+    expect(TokenType::DELIMITER, "{");
+    std::vector<EnumVariant> variants;
+
+    while (current_token_ && !(current_token_->type == TokenType::DELIMITER && current_token_->value == "}")) {
+        if (current_token_->type == TokenType::NEWLINE) { advance(); continue; }
+        if (current_token_->type == TokenType::DELIMITER && current_token_->value == ",") { advance(); continue; }
+
+        if (current_token_->type != TokenType::IDENTIFIER) {
+            throw std::runtime_error("SyntaxError: Expected variant name in enum '" + enum_name + "' at line " + std::to_string(current_token_->line));
+        }
+        EnumVariant variant;
+        variant.name = current_token_->value;
+        advance();
+
+        // Optional payload: Variant(field: type, ...)
+        if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == "(") {
+            advance(); // consume '('
+            while (current_token_ && !(current_token_->type == TokenType::DELIMITER && current_token_->value == ")")) {
+                if (current_token_->type == TokenType::NEWLINE) { advance(); continue; }
+                std::string field_name = "";
+                std::string field_type = "";
+                if (current_token_->type == TokenType::IDENTIFIER) {
+                    field_name = current_token_->value;
+                    advance();
+                    if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == ":") {
+                        advance();
+                        if (current_token_ && (current_token_->type == TokenType::IDENTIFIER || current_token_->type == TokenType::KEYWORD)) {
+                            field_type = current_token_->value;
+                            advance();
+                        }
+                    }
+                }
+                variant.fields.push_back(field_name);
+                variant.field_types.push_back(field_type);
+                if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == ",") {
+                    advance();
+                } else {
+                    break;
+                }
+            }
+            expect(TokenType::DELIMITER, ")");
+        }
+        variants.push_back(std::move(variant));
+    }
+    expect(TokenType::DELIMITER, "}");
+    return std::make_unique<EnumDefNode>(enum_name, std::move(variants));
+}
+
+// =============================================================================
+// M2: match_statement - parses: match expr { case Variant(x) { ... } case _ { } }
+// =============================================================================
+ASTNodePtr Parser::match_statement() {
+    size_t match_line = current_token_->line;
+    advance(); // consume 'match'
+    ASTNodePtr subject = expression();
+
+    expect(TokenType::DELIMITER, "{");
+    std::vector<MatchArm> arms;
+
+    while (current_token_ && !(current_token_->type == TokenType::DELIMITER && current_token_->value == "}")) {
+        if (current_token_->type == TokenType::NEWLINE) { advance(); continue; }
+
+        MatchArm arm;
+        bool is_default_arm = current_token_->type == TokenType::KEYWORD && current_token_->value == "default";
+        if (is_default_arm) {
+            arm.variant_name = "_";
+            advance(); // consume 'default'
+        } else {
+            if (!(current_token_->type == TokenType::KEYWORD && current_token_->value == "case")) {
+                throw std::runtime_error("SyntaxError: Expected 'case' or 'default' in match at line " + std::to_string(current_token_->line));
+            }
+            advance(); // consume 'case'
+            if (!current_token_) {
+                throw std::runtime_error("SyntaxError: Expected pattern after 'case' in match at line " + std::to_string(match_line));
+            }
+            arm.variant_name = current_token_->value;
+            advance();
+        }
+
+        // Optional binding: case Variant(x, y)
+        if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == "(") {
+            advance();
+            while (current_token_ && !(current_token_->type == TokenType::DELIMITER && current_token_->value == ")")) {
+                if (current_token_->type == TokenType::NEWLINE) { advance(); continue; }
+                if (current_token_->type == TokenType::IDENTIFIER) {
+                    arm.bindings.push_back(current_token_->value);
+                    advance();
+                }
+                if (current_token_ && current_token_->type == TokenType::DELIMITER && current_token_->value == ",") {
+                    advance();
+                } else break;
+            }
+            expect(TokenType::DELIMITER, ")");
+        }
+
+        if (current_token_ && current_token_->type == TokenType::OPERATOR && current_token_->value == "->") {
+            advance(); // consume '->'
+            arm.body.push_back(statement());
+        } else {
+            arm.body = parse_block();
+        }
+        arms.push_back(std::move(arm));
+    }
+    expect(TokenType::DELIMITER, "}");
+    return std::make_unique<MatchNode>(std::move(subject), std::move(arms));
+}
+
+// =============================================================================
+// M3: try_catch_statement
+// Parses: try { ... } catch e { ... } [finally { ... }]
+// =============================================================================
+ASTNodePtr Parser::try_catch_statement() {
+    advance(); // consume 'try'
+    auto try_body = parse_block();
+
+    std::string catch_var = "_err";
+    std::vector<ASTNodePtr> catch_body;
+    std::vector<ASTNodePtr> finally_body;
+
+    // Expect 'catch'
+    while (current_token_ && current_token_->type == TokenType::NEWLINE) advance();
+    if (current_token_ && current_token_->type == TokenType::KEYWORD && current_token_->value == "catch") {
+        advance(); // consume 'catch'
+        // Optional catch variable: catch e { ... } or catch { ... }
+        if (current_token_ && current_token_->type == TokenType::IDENTIFIER) {
+            catch_var = current_token_->value;
+            advance();
+        }
+        catch_body = parse_block();
+    }
+
+    // Optional 'finally'
+    while (current_token_ && current_token_->type == TokenType::NEWLINE) advance();
+    if (current_token_ && current_token_->type == TokenType::KEYWORD && current_token_->value == "finally") {
+        advance(); // consume 'finally'
+        finally_body = parse_block();
+    }
+
+    return std::make_unique<TryCatchNode>(std::move(try_body), catch_var,
+                                          std::move(catch_body), std::move(finally_body));
+}
+
+// =============================================================================
+// M3: throw_statement - parses: throw expr
+// =============================================================================
+ASTNodePtr Parser::throw_statement() {
+    advance(); // consume 'throw'
+    ASTNodePtr expr = nullptr;
+    if (current_token_ && current_token_->type != TokenType::NEWLINE &&
+        current_token_->type != TokenType::END_OF_FILE &&
+        current_token_->value != ";" && current_token_->value != "}") {
+        expr = expression();
+    } else {
+        // throw; with no argument throws empty string
+        expr = std::make_unique<StringNode>(Token(TokenType::STRING, "", 0, 0));
+    }
+    return std::make_unique<ThrowNode>(std::move(expr));
 }
 
 } // namespace wyrm

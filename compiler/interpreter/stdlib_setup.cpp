@@ -26,6 +26,11 @@ extern "C" {
 #include "../../wyrm/lib/stdlib/wyrm_std_collections.h"
 #include "../../wyrm/lib/stdlib/wyrm_std_random.h"
 #include "../../wyrm/lib/stdlib/wyrm_std_time.h"
+#include "../../wyrm/lib/stdlib/wyrm_std_os.h"
+#include "../../wyrm/lib/stdlib/wyrm_std_fs.h"
+#include "../../wyrm/lib/stdlib/wyrm_std_path.h"
+#include "../../wyrm/lib/stdlib/wyrm_std_io.h"
+#include "../../wyrm/lib/stdlib/wyrm_std_http.h"
 }
 
 namespace wyrm {
@@ -267,6 +272,78 @@ void register_random(Environment& env) {
     reg(env, "rand_reseed_trng", wrap0(rand_reseed_trng));
 }
 
+/* ============================================================
+ * OS module: std.os
+ * ============================================================ */
+void register_os(Environment& env) {
+    reg(env, "os_args",      [](const std::vector<Value>&) -> Value { return os_args(); });
+    reg(env, "os_env",       wrap1(os_env));
+    reg(env, "os_setenv",    wrap2(os_setenv));
+    reg(env, "os_unsetenv",  wrap1(os_unsetenv));
+    reg(env, "os_cwd",       [](const std::vector<Value>&) -> Value { return os_cwd(); });
+    reg(env, "os_chdir",     wrap1(os_chdir));
+    reg(env, "os_exit",      wrap1(os_exit));
+    reg(env, "os_exec",      wrap1(os_exec));
+    reg(env, "os_platform",  [](const std::vector<Value>&) -> Value { return os_platform(); });
+    reg(env, "os_sep",       [](const std::vector<Value>&) -> Value { return os_sep(); });
+    reg(env, "os_environ",   [](const std::vector<Value>&) -> Value { return os_environ(); });
+}
+
+/* ============================================================
+ * FS module: std.fs
+ * ============================================================ */
+void register_fs(Environment& env) {
+    reg(env, "fs_read",    wrap1(fs_read));
+    reg(env, "fs_write",   wrap2(fs_write));
+    reg(env, "fs_append",  wrap2(fs_append));
+    reg(env, "fs_exists",  wrap1(fs_exists));
+    reg(env, "fs_delete",  wrap1(fs_delete));
+    reg(env, "fs_mkdir",   wrap1(fs_mkdir));
+    reg(env, "fs_rmdir",   wrap1(fs_rmdir));
+    reg(env, "fs_readdir", wrap1(fs_readdir));
+    reg(env, "fs_stat",    wrap1(fs_stat));
+    reg(env, "fs_copy",    wrap2(fs_copy));
+    reg(env, "fs_move",    wrap2(fs_move));
+}
+
+/* ============================================================
+ * Path module: std.path
+ * ============================================================ */
+void register_path(Environment& env) {
+    reg(env, "path_join",      wrap2(path_join));
+    reg(env, "path_basename",  wrap1(path_basename));
+    reg(env, "path_dirname",   wrap1(path_dirname));
+    reg(env, "path_ext",       wrap1(path_ext));
+    reg(env, "path_abs",       wrap1(path_abs));
+    reg(env, "path_is_abs",    wrap1(path_is_abs));
+    reg(env, "path_stem",      wrap1(path_stem));
+    reg(env, "path_with_ext",  wrap2(path_with_ext));
+}
+
+/* ============================================================
+ * IO module: std.io
+ * ============================================================ */
+void register_io(Environment& env) {
+    reg(env, "io_stdin",    [](const std::vector<Value>&) -> Value { return io_stdin(); });
+    reg(env, "io_readline", [](const std::vector<Value>&) -> Value { return io_readline(); });
+    reg(env, "io_write",    wrap1(io_write));
+    reg(env, "io_writeln",  wrap1(io_writeln));
+    reg(env, "io_flush",    [](const std::vector<Value>&) -> Value { return io_flush(); });
+    reg(env, "io_stderr",   wrap1(io_stderr));
+    reg(env, "io_stderrln", wrap1(io_stderrln));
+}
+
+/* ============================================================
+ * HTTP module: std.http
+ * ============================================================ */
+void register_http(Environment& env) {
+    reg(env, "http_get",         wrap1(http_get));
+    reg(env, "http_post",        wrap2(http_post));
+    reg(env, "http_post_json",   wrap2(http_post_json));
+    reg(env, "http_get_headers", wrap2(http_get_headers));
+    reg(env, "http_available",   [](const std::vector<Value>&) -> Value { return http_available(); });
+}
+
 void register_time(Environment& env) {
     reg(env, "time_now",          wrap0(time_now));
     reg(env, "time_unix",         wrap0(time_unix));
@@ -294,6 +371,11 @@ bool try_register(const std::string& module_path, Environment& env) {
         { "std.collections", register_collections },
         { "std.random",      register_random      },
         { "std.time",        register_time        },
+        { "std.os",          register_os          },
+        { "std.fs",          register_fs          },
+        { "std.path",        register_path        },
+        { "std.io",          register_io          },
+        { "std.http",        register_http        },
         // Dual-Aliasing short names
         { "ffi",             register_ffi         },
         { "json",            register_json        },
@@ -302,6 +384,11 @@ bool try_register(const std::string& module_path, Environment& env) {
         { "collections",     register_collections },
         { "random",          register_random      },
         { "time",            register_time        },
+        { "os",              register_os          },
+        { "fs",              register_fs          },
+        { "path",            register_path        },
+        { "io",              register_io          },
+        { "http",            register_http        },
     };
     auto it = dispatch_table.find(module_path);
     if (it == dispatch_table.end()) return false;

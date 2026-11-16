@@ -10,7 +10,7 @@
 namespace fs = std::filesystem;
 
 #ifndef WYRPKG_VERSION
-#define WYRPKG_VERSION "1.1.0"
+#define WYRPKG_VERSION "1.2.0"
 #endif
 
 fs::path get_install_dir() {
@@ -475,6 +475,80 @@ int main(int argc, char* argv[]) {
     } else {
         std::cout << "Unknown command '" << cmd << "'. Run 'wyrpkg --help' for usage." << std::endl;
         return 1;
+    }
+
+    // wyrpkg add <name> <version>
+    if (cmd == "add") {
+        if (argc < 3) {
+            std::cerr << "Error: Usage: wyrpkg add <package> [version]" << std::endl;
+            return 1;
+        }
+        std::string pkg_name = argv[2];
+        std::string pkg_version = (argc >= 4) ? argv[3] : "latest";
+
+        // Find or create wyrpkg.toml
+        fs::path toml_path = "wyrpkg.toml";
+        if (!fs::exists(toml_path)) {
+            std::string proj = fs::current_path().filename().string();
+            write_toml_manifest(toml_path, proj, "0.1.0", "main.wyr");
+        }
+
+        // Read existing content and append dependency
+        std::ifstream rf(toml_path);
+        std::string content((std::istreambuf_iterator<char>(rf)), std::istreambuf_iterator<char>());
+        rf.close();
+
+        // Check if [dependencies] section exists
+        bool has_deps = content.find("[dependencies]") != std::string::npos;
+        std::string dep_line = pkg_name + " = \"" + pkg_version + "\"";
+
+        if (!has_deps) {
+            content += "\n[dependencies]\n";
+        }
+        // Check if already listed
+        if (content.find(pkg_name + " =") != std::string::npos) {
+            std::cout << "Package '" << pkg_name << "' already in wyrpkg.toml. Update the version manually if needed." << std::endl;
+            return 0;
+        }
+        content += dep_line + "\n";
+
+        std::ofstream wf(toml_path);
+        wf << content;
+        std::cout << "Added '" << pkg_name << " = \"" << pkg_version << "\"' to wyrpkg.toml" << std::endl;
+        return 0;
+    }
+
+    // wyrpkg lock
+    if (cmd == "lock") {
+        auto manifest = read_project_manifest();
+        if (!manifest.found) {
+            std::cerr << "Error: No wyrpkg.toml found. Run 'wyrpkg init' first." << std::endl;
+            return 1;
+        }
+
+        std::map<std::string, std::string> resolved;
+        for (const auto& dep : manifest.dependencies) {
+            // Check if installed in ~/.wyrm/packages/
+            fs::path dep_path = packages_dir / dep.first;
+            std::string resolved_version = dep.second;
+            if (fs::exists(dep_path)) {
+                // Read version from installed package manifest if available
+                fs::path dep_toml = dep_path / "wyrpkg.toml";
+                if (fs::exists(dep_toml)) {
+                    auto dep_manifest = read_toml_manifest(dep_toml);
+                    if (!dep_manifest.version.empty()) {
+                        resolved_version = dep_manifest.version;
+                    }
+                }
+            }
+            resolved[dep.first] = resolved_version;
+        }
+
+        // Write project-local lockfile
+        fs::path project_lock = "wyrpkg.lock";
+        write_lock_file(project_lock, resolved);
+        std::cout << "Lockfile written to wyrpkg.lock (" << resolved.size() << " package(s))" << std::endl;
+        return 0;
     }
 
     return 0;

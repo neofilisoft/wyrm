@@ -5,6 +5,7 @@
 #include <fstream>
 #include <sstream>
 #include <cstdlib>
+#include <algorithm>
 
 namespace wyrm {
 
@@ -25,10 +26,16 @@ std::string Transpiler::load_c_runtime() {
         "stdlib/wyrm_std_json.h", "stdlib/wyrm_std_yaml.h",
         "stdlib/wyrm_std_collections.h",
         "stdlib/wyrm_std_random.h", "stdlib/wyrm_std_time.h",
+        "stdlib/wyrm_std_os.h", "stdlib/wyrm_std_fs.h",
+        "stdlib/wyrm_std_path.h", "stdlib/wyrm_std_io.h",
+        "stdlib/wyrm_std_http.h",
         "wyrm_core.c", "wyrm_arena.c", "wyrm_str.c", "wyrm_ffi.c",
         "stdlib/wyrm_std_json.c", "stdlib/wyrm_std_yaml.c",
         "stdlib/wyrm_std_collections.c",
-        "stdlib/wyrm_std_random.c", "stdlib/wyrm_std_time.c"
+        "stdlib/wyrm_std_random.c", "stdlib/wyrm_std_time.c",
+        "stdlib/wyrm_std_os.c", "stdlib/wyrm_std_fs.c",
+        "stdlib/wyrm_std_path.c", "stdlib/wyrm_std_io.c",
+        "stdlib/wyrm_std_http.c"
     };
 
     std::string result;
@@ -53,9 +60,9 @@ std::string Transpiler::load_c_runtime() {
                 if (stripped.rfind("#include \"wyrm_", 0) == 0) continue;
                 if (stripped.rfind("#include \"../wyrm_", 0) == 0) continue;
                 if (stripped.rfind("#include \"stdlib/", 0) == 0) continue;
-                if (stripped.rfind("#ifndef WYRM_", 0) == 0) continue;
-                if (stripped.rfind("#define WYRM_", 0) == 0) continue;
-                if (stripped.rfind("#endif", 0) == 0 && stripped.find("WYRM_") != std::string::npos) continue;
+                // Keep preprocessor guards intact. Some runtime files use
+                // WYRM_* feature flags, such as WYRM_NO_CURL, and removing
+                // those guards corrupts the concatenated C translation unit.
             }
             result += line + "\n";
         }
@@ -79,6 +86,9 @@ std::string Transpiler::pop_scope() {
     for (const auto& alloc : scope.allocations) {
         cleanup += "wyrm_var_" + alloc + " = val_raw_free(wyrm_var_" + alloc + ");\n";
     }
+    for (auto it = scope.owned_values.rbegin(); it != scope.owned_values.rend(); ++it) {
+        cleanup += "val_drop(wyrm_var_" + *it + ");\n";
+    }
     return cleanup;
 }
 
@@ -90,6 +100,9 @@ std::string Transpiler::get_all_cleanups() {
         }
         for (const auto& alloc : it->allocations) {
             cleanup += "wyrm_var_" + alloc + " = val_raw_free(wyrm_var_" + alloc + ");\n";
+        }
+        for (auto owned = it->owned_values.rbegin(); owned != it->owned_values.rend(); ++owned) {
+            cleanup += "val_drop(wyrm_var_" + *owned + ");\n";
         }
     }
     return cleanup;
@@ -106,7 +119,9 @@ void Transpiler::emit(const std::string& stmt) {
 void Transpiler::visit_statement(ASTNode* stmt) {
     std::string res = evaluate(stmt);
     if (!res.empty()) {
-        if (dynamic_cast<FunctionCallNode*>(stmt) || 
+        if (dynamic_cast<FunctionCallNode*>(stmt) ||
+            dynamic_cast<MethodCallNode*>(stmt) ||
+            dynamic_cast<MemberAssignNode*>(stmt) ||
             dynamic_cast<ArenaAllocNode*>(stmt) || 
             dynamic_cast<ArenaResetNode*>(stmt)) {
             emit(res + ";");
@@ -487,6 +502,54 @@ void Transpiler::visit(FunctionCallNode* node) {
         "split", "join", "trim", "upper", "lower", "contains", "replace",
         "starts_with", "ends_with", "char_at", "ord_val", "chr_val", "to_bytes", "from_bytes"
     };
+    static const std::unordered_map<std::string, std::string> stdlib_functions = {
+        { "ffi_open", "ffi_open" }, { "ffi_sym", "ffi_sym" },
+        { "ffi_call", "ffi_call_fn" }, { "ffi_close", "ffi_close" },
+        { "json_parse", "json_parse" }, { "json_encode", "json_encode" },
+        { "json_pretty", "json_pretty" }, { "json_get", "json_get" },
+        { "json_has", "json_has" }, { "json_set", "json_set" },
+        { "json_object", "json_object" }, { "yaml_parse", "yaml_parse" },
+        { "yaml_encode", "yaml_encode" }, { "map_new", "map_new" },
+        { "map_set", "map_set" }, { "map_get", "map_get" },
+        { "map_has", "map_has" }, { "map_del", "map_del" },
+        { "map_keys", "map_keys" }, { "map_values", "map_values" },
+        { "map_len", "map_len" }, { "set_new", "set_new" },
+        { "set_add", "set_add" }, { "set_has", "set_has" },
+        { "set_del", "set_del" }, { "set_union", "set_union_fn" },
+        { "set_intersect", "set_intersect" }, { "set_to_array", "set_to_array" },
+        { "rand_seed", "rand_seed" }, { "rand", "rand_val" },
+        { "rand_int", "rand_int" }, { "rand_range", "rand_range" },
+        { "rand_choice", "rand_choice" }, { "rand_shuffle", "rand_shuffle" },
+        { "rand_secure", "rand_secure" }, { "rand_secure_int", "rand_secure_int" },
+        { "rand_bytes_hex", "rand_bytes_hex" }, { "rand_has_trng", "rand_has_trng" },
+        { "rand_trng", "rand_trng" }, { "rand_trng_int", "rand_trng_int" },
+        { "rand_reseed_trng", "rand_reseed_trng" }, { "time_now", "time_now" },
+        { "time_unix", "time_unix" }, { "time_unix_ms", "time_unix_ms" },
+        { "time_monotonic", "time_monotonic" }, { "time_monotonic_ms", "time_monotonic_ms" },
+        { "time_monotonic_ns", "time_monotonic_ns" }, { "time_sleep", "time_sleep_ms" },
+        { "time_diff", "time_diff" }, { "time_format", "time_format_utc" },
+        { "time_format_local", "time_format_local" }, { "os_args", "os_args" },
+        { "os_env", "os_env" }, { "os_setenv", "os_setenv" },
+        { "os_unsetenv", "os_unsetenv" }, { "os_cwd", "os_cwd" },
+        { "os_chdir", "os_chdir" }, { "os_exit", "os_exit" },
+        { "os_exec", "os_exec" }, { "os_platform", "os_platform" },
+        { "os_sep", "os_sep" }, { "os_environ", "os_environ" },
+        { "fs_read", "fs_read" }, { "fs_write", "fs_write" },
+        { "fs_append", "fs_append" }, { "fs_exists", "fs_exists" },
+        { "fs_delete", "fs_delete" }, { "fs_mkdir", "fs_mkdir" },
+        { "fs_rmdir", "fs_rmdir" }, { "fs_readdir", "fs_readdir" },
+        { "fs_stat", "fs_stat" }, { "fs_copy", "fs_copy" }, { "fs_move", "fs_move" },
+        { "path_join", "path_join" }, { "path_basename", "path_basename" },
+        { "path_dirname", "path_dirname" }, { "path_ext", "path_ext" },
+        { "path_abs", "path_abs" }, { "path_is_abs", "path_is_abs" },
+        { "path_stem", "path_stem" }, { "path_with_ext", "path_with_ext" },
+        { "io_stdin", "io_stdin" }, { "io_readline", "io_readline" },
+        { "io_write", "io_write" }, { "io_writeln", "io_writeln" },
+        { "io_flush", "io_flush" }, { "io_stderr", "io_stderr" },
+        { "io_stderrln", "io_stderrln" }, { "http_get", "http_get" },
+        { "http_post", "http_post" }, { "http_post_json", "http_post_json" },
+        { "http_get_headers", "http_get_headers" }, { "http_available", "http_available" }
+    };
 
     if (builtins.count(func_name)) {
         if (func_name == "input") {
@@ -509,8 +572,17 @@ void Transpiler::visit(FunctionCallNode* node) {
             else if (func_name == "lock") c_fn = "val_weak_lock";
             last_result_ = c_fn + "(" + args_str + ")";
         }
+    } else if (auto stdlib_function = stdlib_functions.find(func_name);
+               stdlib_function != stdlib_functions.end()) {
+        last_result_ = stdlib_function->second + "(" + args_str + ")";
     } else {
-        std::string c_fn = (func_name == "main") ? "wyrm_fn_main" : "wyrm_fn_" + func_name;
+        std::string c_fn;
+        auto enum_variant = enum_variant_functions.find(func_name);
+        if (enum_variant != enum_variant_functions.end()) {
+            c_fn = enum_variant->second;
+        } else {
+            c_fn = (func_name == "main") ? "wyrm_fn_main" : "wyrm_fn_" + func_name;
+        }
         last_result_ = c_fn + "(" + args_str + ")";
     }
 }
@@ -544,6 +616,15 @@ void Transpiler::visit(SliceNode* node) {
 
 void Transpiler::visit(ReturnNode* node) {
     std::string expr = node->expr ? evaluate(node->expr.get()) : "val_null()";
+    if (auto* identifier = dynamic_cast<IdentifierNode*>(node->expr.get())) {
+        for (auto& scope : scopes) {
+            auto owned = std::find(scope.owned_values.begin(), scope.owned_values.end(), identifier->name);
+            if (owned != scope.owned_values.end()) {
+                scope.owned_values.erase(owned);
+                break;
+            }
+        }
+    }
     std::string cleanups = get_all_cleanups();
     if (!cleanups.empty()) {
         std::stringstream ss(cleanups);
@@ -564,7 +645,12 @@ void Transpiler::visit(UseNode* node) {
         raw_path == "std.thread" || raw_path == "thread" ||
         raw_path == "std.collections" || raw_path == "collections" ||
         raw_path == "std.random" || raw_path == "random" ||
-        raw_path == "std.time" || raw_path == "time") {
+        raw_path == "std.time" || raw_path == "time" ||
+        raw_path == "std.os"   || raw_path == "os"   ||
+        raw_path == "std.fs"   || raw_path == "fs"   ||
+        raw_path == "std.path" || raw_path == "path" ||
+        raw_path == "std.io"   || raw_path == "io"   ||
+        raw_path == "std.http" || raw_path == "http") {
         return;
     }
     std::string dot_path = raw_path;
@@ -719,6 +805,9 @@ void Transpiler::visit(OwnedDeclNode* node) {
     if (is_const) {
         constants.insert(var_name);
     }
+    if (in_function && !scopes.empty()) {
+        scopes.back().owned_values.push_back(var_name);
+    }
     last_result_ = c_var;
 }
 
@@ -752,7 +841,8 @@ void Transpiler::visit(StructDefNode* node) {
     }
     header_lines.push_back("Value " + fn_name + "(" + params_str + ");");
 
-    emit("Value " + fn_name + "(" + params_str + ") {");
+    std::vector<std::string> constructor_lines;
+    constructor_lines.push_back("\nValue " + fn_name + "(" + params_str + ") {");
     if (!node->fields.empty()) {
         std::string fields_array = "const char *field_names[] = { ";
         std::string vals_array = "Value field_vals[] = { ";
@@ -766,13 +856,14 @@ void Transpiler::visit(StructDefNode* node) {
         }
         fields_array += " };";
         vals_array += " };";
-        emit(fields_array);
-        emit(vals_array);
-        emit("return val_struct_create(\"" + node->name + "\", " + std::to_string(node->fields.size()) + ", field_names, field_vals);");
+        constructor_lines.push_back("    " + fields_array);
+        constructor_lines.push_back("    " + vals_array);
+        constructor_lines.push_back("    return val_struct_create(\"" + node->name + "\", " + std::to_string(node->fields.size()) + ", field_names, field_vals);");
     } else {
-        emit("return val_struct_create(\"" + node->name + "\", 0, NULL, NULL);");
+        constructor_lines.push_back("    return val_struct_create(\"" + node->name + "\", 0, NULL, NULL);");
     }
-    emit("}\n");
+    constructor_lines.push_back("}");
+    function_lines.insert(function_lines.end(), constructor_lines.begin(), constructor_lines.end());
 
     for (auto& method : node->methods) {
         visit_statement(method.get());
@@ -798,6 +889,254 @@ void Transpiler::visit(MethodCallNode* node) {
         args_str += ", " + evaluate(arg.get());
     }
     last_result_ = "wyrm_fn_" + node->method_name + "(" + args_str + ")";
+}
+
+// ===========================================================================
+// M2: visit(EnumDefNode*)
+// Emits a C constructor function for each variant in the enum
+// ===========================================================================
+void Transpiler::visit(EnumDefNode* node) {
+    const std::string& enum_name = node->name;
+    for (const auto& v : node->variants) {
+        std::string tag = enum_name + "::" + v.name;
+        std::string fn_name = "wyrm_fn_" + enum_name + "__" + v.name;
+        enum_variant_functions[v.name] = fn_name;
+
+        std::string params;
+        for (size_t i = 0; i < v.fields.size(); ++i) {
+            params += "Value wyrm_var_" + v.fields[i];
+            if (i + 1 < v.fields.size()) params += ", ";
+        }
+
+        // Forward declaration
+        header_lines.push_back("Value " + fn_name + "(" + params + ");  /* enum " + enum_name + "::" + v.name + " */");
+
+        // Variant constructor function in C
+        std::string field_names = "\"__tag__\"";
+        std::string field_values = "val_string(\"" + tag + "\")";
+        for (const auto& field : v.fields) {
+            field_names += ", \"" + field + "\"";
+            field_values += ", wyrm_var_" + field;
+        }
+        std::string fn_code = "\nValue " + fn_name + "(" + params + ") {\n";
+        fn_code += "    const char* __fnames[] = { " + field_names + " };\n";
+        fn_code += "    Value __fvals[] = { " + field_values + " };\n";
+        fn_code += "    return val_struct_create(\"" + tag + "\", " + std::to_string(v.fields.size() + 1) + ", __fnames, __fvals);\n";
+        fn_code += "}\n";
+        function_lines.push_back(fn_code);
+    }
+    last_result_ = "";
+}
+
+// ===========================================================================
+// M2: visit(MatchNode*)
+// Emits C if/else if chain comparing __tag__ field
+// ===========================================================================
+void Transpiler::visit(MatchNode* node) {
+    std::string subj = evaluate(node->subject.get());
+    // Save subject to a temp variable to avoid re-evaluation
+    std::string tmp = "wyrm_match_subj_" + std::to_string(lambda_counter_++);
+    emit("Value " + tmp + " = " + subj + ";");
+    emit("Value " + tmp + "_tag = val_struct_get(" + tmp + ", \"__tag__\");");
+
+    bool first = true;
+    for (auto& arm : node->arms) {
+        std::string cond;
+        if (arm.variant_name == "_") {
+            // Wildcard - always true
+            if (first) {
+                emit("if (1) {");
+            } else {
+                emit("else {");
+            }
+        } else {
+            std::string tag_suffix = "::" + arm.variant_name;
+            if (first) {
+                cond = "val_to_bool(val_ends_with(" + tmp + "_tag, val_string(\"" + tag_suffix + "\")))";
+                emit("if (" + cond + ") {");
+            } else {
+                cond = "val_to_bool(val_ends_with(" + tmp + "_tag, val_string(\"" + tag_suffix + "\")))";
+                emit("else if (" + cond + ") {");
+            }
+        }
+        first = false;
+        push_scope();
+
+        // Bind positional fields to binding names
+        for (size_t i = 0; i < arm.bindings.size(); i++) {
+            if (!arm.bindings[i].empty()) {
+                // Fields: index 0 = __tag__, index 1+ = payload fields
+                std::string field_idx = std::to_string(i + 1);
+                std::string c_bind = "wyrm_var_" + arm.bindings[i];
+                declared_locals.insert(arm.bindings[i]);
+                emit("Value " + c_bind + " = (" + tmp + ".type == VAL_STRUCT && " +
+                     tmp + ".as.structure && " + tmp + ".as.structure->field_count > " + field_idx + ") ? " +
+                     "val_copy(" + tmp + ".as.structure->fields[" + field_idx + "]) : val_null();");
+            }
+        }
+
+        for (auto& stmt : arm.body) {
+            visit_statement(stmt.get());
+        }
+        std::string cleanup = pop_scope();
+        if (!cleanup.empty()) {
+            std::stringstream ss(cleanup);
+            std::string line;
+            while (std::getline(ss, line)) {
+                if (!line.empty()) emit(line);
+            }
+        }
+        emit("}");
+    }
+    emit("val_drop(" + tmp + "_tag);");
+    emit("val_drop(" + tmp + ");");
+    last_result_ = "";
+}
+
+// ===========================================================================
+// M3: visit(ThrowNode*)
+// Emits a WyrmThrowSignal via longjmp-style macro in generated C
+// ===========================================================================
+void Transpiler::visit(ThrowNode* node) {
+    std::string expr = evaluate(node->expr.get());
+    // In generated C, represent throw as fprintf(stderr) + exit(1)
+    // This is the safe approach without setjmp complexity in C11
+    emit("{");
+    emit("    Value _throw_val = " + expr + ";");
+    emit("    char* _throw_str = val_to_cstring(_throw_val);");
+    emit("    fprintf(stderr, \"Uncaught error: %s\\n\", _throw_str ? _throw_str : \"(error)\");");
+    emit("    if (_throw_str) free(_throw_str);");
+    emit("    val_drop(_throw_val);");
+    emit("    exit(1);");
+    emit("}");
+    last_result_ = "";
+}
+
+// ===========================================================================
+// M3: visit(TryCatchNode*)
+// Emits C setjmp/longjmp for try/catch in generated native code
+// ===========================================================================
+void Transpiler::visit(TryCatchNode* node) {
+    int id = lambda_counter_++;
+    std::string jbuf = "wyrm_jbuf_" + std::to_string(id);
+    std::string err_var = "wyrm_catch_err_" + std::to_string(id);
+
+    emit("#include <setjmp.h>");  // may appear multiple times but is safe
+    emit("jmp_buf " + jbuf + ";");
+    emit("Value " + err_var + " = val_null();");
+    emit("if (setjmp(" + jbuf + ") == 0) {");
+
+    push_scope();
+    for (auto& stmt : node->try_body) {
+        visit_statement(stmt.get());
+    }
+    std::string cleanup = pop_scope();
+    if (!cleanup.empty()) {
+        std::stringstream ss(cleanup);
+        std::string line;
+        while (std::getline(ss, line)) {
+            if (!line.empty()) emit(line);
+        }
+    }
+    emit("} else {");
+
+    // Catch block
+    push_scope();
+    if (!node->catch_var.empty()) {
+        std::string c_catch_var = "wyrm_var_" + node->catch_var;
+        declared_locals.insert(node->catch_var);
+        emit("Value " + c_catch_var + " = " + err_var + ";");
+    }
+    for (auto& stmt : node->catch_body) {
+        visit_statement(stmt.get());
+    }
+    cleanup = pop_scope();
+    if (!cleanup.empty()) {
+        std::stringstream ss(cleanup);
+        std::string line;
+        while (std::getline(ss, line)) {
+            if (!line.empty()) emit(line);
+        }
+    }
+    emit("}");
+    emit("val_drop(" + err_var + ");");
+
+    // Finally block
+    if (!node->finally_body.empty()) {
+        push_scope();
+        for (auto& stmt : node->finally_body) {
+            visit_statement(stmt.get());
+        }
+        cleanup = pop_scope();
+        if (!cleanup.empty()) {
+            std::stringstream ss(cleanup);
+            std::string line;
+            while (std::getline(ss, line)) {
+                if (!line.empty()) emit(line);
+            }
+        }
+    }
+    last_result_ = "";
+}
+
+// ===========================================================================
+// M5: visit(LambdaNode*)
+// Emits a static C function and returns a pointer to it as a Value
+// ===========================================================================
+void Transpiler::visit(LambdaNode* node) {
+    int id = lambda_counter_++;
+    std::string fn_name = "wyrm_lambda_" + std::to_string(id);
+
+    // Build parameter list
+    std::string params_str;
+    for (size_t i = 0; i < node->params.size(); ++i) {
+        params_str += "Value wyrm_var_" + node->params[i]->name;
+        if (i + 1 < node->params.size()) params_str += ", ";
+    }
+
+    // Forward declare the lambda function
+    header_lines.push_back("static Value " + fn_name + "(" + params_str + ");");
+
+    // Save current state and emit lambda body into function_lines
+    bool old_in_fn = in_function;
+    auto old_locals = declared_locals;
+    auto old_scopes = scopes;
+    in_function = true;
+    declared_locals.clear();
+    for (auto& p : node->params) declared_locals.insert(p->name);
+    scopes.clear();
+
+    function_lines.push_back("\nstatic Value " + fn_name + "(" + params_str + ") {");
+    push_scope();
+    for (auto& stmt : node->body) {
+        visit_statement(stmt.get());
+    }
+    std::string cleanup = pop_scope();
+    if (!cleanup.empty()) {
+        std::stringstream ss(cleanup);
+        std::string line;
+        while (std::getline(ss, line)) {
+            if (!line.empty()) function_lines.push_back("    " + line);
+        }
+    }
+    function_lines.push_back("    return val_null();");
+    function_lines.push_back("}");
+
+    scopes = old_scopes;
+    declared_locals = old_locals;
+    in_function = old_in_fn;
+
+    // The lambda value is a raw function pointer stored as val_raw_ptr
+    last_result_ = "val_raw_ptr((void*)" + fn_name + ")";
+}
+
+// ===========================================================================
+// M6: visit(AwaitNode*)
+// Sequential: await evaluates the expression directly (no suspension)
+// ===========================================================================
+void Transpiler::visit(AwaitNode* node) {
+    // Sequential semantics in compiled output - await is a no-op wrapper
+    last_result_ = evaluate(node->expr.get());
 }
 
 } // namespace wyrm

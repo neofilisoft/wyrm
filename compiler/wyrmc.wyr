@@ -1,4 +1,4 @@
-// Wyrm Compiler & LLVM IR Generator (wyrmc) 1.1.0
+// Wyrm Compiler & LLVM IR Generator (wyrmc) 1.2.0
 // Written entirely in Wyrm for self-hosting.
 
 var token_pos = [0]
@@ -75,7 +75,7 @@ fn tokenize(source) {
                     } til not is_alphanum(c) or pos >= len_src
                     
                     var type = "IDENTIFIER"
-                    if val == "use" or val == "fn" or val == "var" or val == "dec" or val == "owned" or val == "arena" or val == "if" or val == "elif" or val == "else" or val == "repeat" or val == "do" or val == "til" or val == "struct" or val == "unsafe" or val == "return" or val == "break" or val == "continue" or val == "print" or val == "and" or val == "or" or val == "not" or val == "true" or val == "false" or val == "null" or val == "try" or val == "catch" or val == "weak" {
+                    if val == "use" or val == "fn" or val == "var" or val == "dec" or val == "owned" or val == "arena" or val == "if" or val == "elif" or val == "else" or val == "repeat" or val == "do" or val == "til" or val == "struct" or val == "enum" or val == "match" or val == "case" or val == "default" or val == "unsafe" or val == "return" or val == "break" or val == "continue" or val == "print" or val == "and" or val == "or" or val == "not" or val == "true" or val == "false" or val == "null" or val == "try" or val == "catch" or val == "weak" {
                         type = "KEYWORD"
                     }
                     append(tokens, [type, val, line, start_col])
@@ -295,7 +295,9 @@ fn parse_statement_inner() {
                         p_type = cur_val()
                         advance()
                     }
-                    append(params, p_name)
+                    // Store [p_name, p_type] so codegen can use type annotations.
+                    // If no annotation, p_type is "" meaning Dynamic.
+                    append(params, [p_name, p_type])
                     if cur_val() == "," {
                         advance()
                     } else { break }
@@ -350,6 +352,43 @@ fn parse_statement_inner() {
             expect("DELIMITER", ")")
             return ["Arena", name, size]
         }
+        if tok[1] == "enum" {
+            advance()
+            var name = cur_val()
+            advance()
+            expect("DELIMITER", "{")
+            var variants = []
+            do {
+                if cur_val() == "}" { break }
+                if cur_type() == "NEWLINE" or cur_val() == "," or cur_val() == ";" {
+                    advance()
+                } else {
+                    var variant_name = cur_val()
+                    advance()
+                    var fields = []
+                    if cur_val() == "(" {
+                        advance()
+                        if cur_val() != ")" {
+                            do {
+                                var field_name = cur_val()
+                                advance()
+                                if cur_val() == ":" {
+                                    advance()
+                                    advance()
+                                }
+                                append(fields, field_name)
+                                if cur_val() == "," { advance() } else { break }
+                            } til false
+                        }
+                        expect("DELIMITER", ")")
+                    }
+                    append(variants, [variant_name, fields])
+                    if cur_val() == "," or cur_val() == ";" { advance() }
+                }
+            } til false
+            expect("DELIMITER", "}")
+            return ["EnumDef", name, variants]
+        }
         if tok[1] == "struct" {
             advance()
             var name = cur_val()
@@ -384,6 +423,47 @@ fn parse_statement_inner() {
             } til false
             expect("DELIMITER", "}")
             return ["StructDef", name, fields, methods]
+        }
+        if tok[1] == "match" {
+            advance()
+            var subject = parse_expression()
+            expect("DELIMITER", "{")
+            var arms = []
+            do {
+                if cur_val() == "}" { break }
+                if cur_type() == "NEWLINE" or cur_val() == "," or cur_val() == ";" {
+                    advance()
+                } else {
+                    var variant_name = "default"
+                    var bindings = []
+                    if cur_val() == "case" {
+                        advance()
+                        variant_name = cur_val()
+                        advance()
+                        if cur_val() == "(" {
+                            advance()
+                            if cur_val() != ")" {
+                                do {
+                                    append(bindings, cur_val())
+                                    advance()
+                                    if cur_val() == "," { advance() } else { break }
+                                } til false
+                            }
+                            expect("DELIMITER", ")")
+                        }
+                    } elif cur_val() == "default" {
+                        advance()
+                    } else {
+                        var bad_tok = current()
+                        report_diagnostic("E0001", "syntax error: match arm expected", bad_tok[2], bad_tok[3], "use case Variant(...) or default")
+                    }
+                    expect("OPERATOR", "->")
+                    var body = [parse_statement()]
+                    append(arms, [variant_name, bindings, body])
+                }
+            } til false
+            expect("DELIMITER", "}")
+            return ["Match", subject, arms]
         }
         if tok[1] == "if" {
             advance()
@@ -823,12 +903,41 @@ var in_function = [false]
 var in_unsafe = [false]
 var has_main_def = [false]
 var declared_globals = [[]]
+
+// Temporary Slot Reuse Pool
+// Instead of allocating a fresh %struct.Value slot for every sub-expression
+// (which causes thousands of alloca instructions per function and explodes
+// LLVM IR size / Clang compile time), we maintain a simple stack-depth counter.
+// Rules:
+//   1. acquire_temp() - grabs the next available slot at the current depth
+//      and bumps the high-water mark (g_temp_max_used) if needed.
+//   2. release_temp(reg) - returns the slot to the pool, but ONLY if reg is
+//      actually a temporary (%tmp_*). Named variables (%wyrm_var_*, @wyrm_var_*)
+//      are never touched.
+//   3. reset_temp_statement() - called at every top-level statement boundary
+//      so that each statement reuses the same pool from depth 0 upward.
+// At FuncDef end, exactly g_temp_max_used[0] alloca instructions are emitted.
+var g_temp_stack_top = [0]
+var g_temp_max_used = [0]
 var emitted_globals = [[]]
 var declared_locals = [[]]
 var g_func_owned = [[]]
 var constants = []
 var g_loop_breaks = [[]]
 var g_loop_continues = [[]]
+// Each entry is [variant_name, field_names]. Enum variants are globally named.
+var g_enum_variants = []
+
+fn enum_variant_fields(name) {
+    var i = 0
+    do {
+        if i >= len(g_enum_variants) { break }
+        var entry = g_enum_variants[i]
+        if entry[0] == name { return entry[1] }
+        i = i + 1
+    } til i >= len(g_enum_variants)
+    return []
+}
 
 // Static Type Analysis State & Helpers
 var current_local_types = []
@@ -1403,16 +1512,26 @@ fn collect_globals_from_stmts(stmts) {
 
 fn analyze_scope_types(body, params) {
     current_local_types = []
-    
-    // 1. Add parameters as Dynamic
+
+    // 1. Add parameters - use annotated type if present, otherwise Dynamic.
     var i = 0
     var pl = len(params)
     do {
         if i >= pl { break }
-        append(current_local_types, [params[i], "Dynamic"])
+        var p_info = params[i]
+        var p_name = p_info
+        var p_type = "Dynamic"
+        if is_array(p_info) {
+            p_name = p_info[0]
+            var ann = p_info[1]
+            if ann != "" and is_unboxed_type(canonical_type(ann)) {
+                p_type = canonical_type(ann)
+            }
+        }
+        append(current_local_types, [p_name, p_type])
         i = i + 1
     } til i >= pl
-    
+
     // 2. Scan body statements
     var bl = len(body)
     i = 0
@@ -1423,12 +1542,56 @@ fn analyze_scope_types(body, params) {
     } til i >= bl
 }
 
-fn gen_temp() {
+fn is_temp_reg(reg) {
+    // Guard: only %tmp_N registers belong to the temporary pool.
+    // Named variables (%wyrm_var_*, @wyrm_var_*) must never be released.
+    if not is_array(reg) {
+        if type(reg) != "string" { return false }
+    }
+    var rl = len(reg)
+    if rl < 6 { return false }
+    return char_at(reg, 0) == "%" and char_at(reg, 1) == "t" and char_at(reg, 2) == "m" and char_at(reg, 3) == "p" and char_at(reg, 4) == "_"
+}
+
+fn acquire_temp() {
+    // Grab the slot at the current stack depth, then advance the pointer.
+    var idx = g_temp_stack_top[0]
+    g_temp_stack_top[0] = g_temp_stack_top[0] + 1
+    if g_temp_stack_top[0] > g_temp_max_used[0] {
+        g_temp_max_used[0] = g_temp_stack_top[0]
+    }
+    // Keep temp_count in sync for any code that still uses it (label gen etc.)
     temp_count[0] = temp_count[0] + 1
-    var name = "%tmp_" + str(temp_count[0])
-    if in_function[0] {
-        append(g_allocas[0], "  " + name + " = alloca %struct.Value, align 8")
-    } else {
+    return "%tmp_" + str(idx)
+}
+
+fn release_temp(reg) {
+    // Return a temporary slot back to the pool.
+    // Only %tmp_N registers can be released; named variables are ignored.
+    if not is_temp_reg(reg) { return }
+    if g_temp_stack_top[0] > 0 {
+        var expected = "%tmp_" + str(g_temp_stack_top[0] - 1)
+        if reg == expected {
+            g_temp_stack_top[0] = g_temp_stack_top[0] - 1
+        }
+    }
+}
+
+fn reset_temp_statement() {
+    // Reset the pool pointer at each statement boundary so that every
+    // top-level statement starts reusing from slot 0 upward.
+    // The high-water mark (g_temp_max_used) is NOT reset here - it keeps
+    // growing to track the maximum depth seen across all statements.
+    g_temp_stack_top[0] = 0
+}
+
+fn gen_temp() {
+    // Backward-compatible wrapper: calls acquire_temp() and also emits the
+    // alloca for the main-block path (inside gen_expr for non-function scope).
+    // NOTE: FuncDef now emits all alloca slots up-front via g_temp_max_used,
+    // so this function should NOT emit alloca for in_function[0] == true.
+    var name = acquire_temp()
+    if not in_function[0] {
         append(g_main_allocas[0], "  " + name + " = alloca %struct.Value, align 8")
     }
     return name
@@ -1810,8 +1973,11 @@ fn gen_expr(node) {
         } elif op == "**" {
             func = "llvm_val_pow"
         }
-        
+        // Tree Liveness Rule 1: child operands consumed by this instruction
+        // can now be released back to the pool.
         emit_inst("call void @" + func + "(ptr " + t + ", ptr " + left_reg + ", ptr " + right_reg + ")")
+        release_temp(right_reg)
+        release_temp(left_reg)
         return t
     }
     if type == "UnaryOp" {
@@ -1828,8 +1994,11 @@ fn gen_expr(node) {
             var zero_reg = gen_temp()
             emit_inst("call void @llvm_val_number(ptr " + zero_reg + ", double 0.0)")
             emit_inst("call void @llvm_val_sub(ptr " + t + ", ptr " + zero_reg + ", ptr " + expr_reg + ")")
+            release_temp(zero_reg)
+            release_temp(expr_reg)
         } elif op == "!" or op == "not" {
             emit_inst("call void @llvm_val_not(ptr " + t + ", ptr " + expr_reg + ")")
+            release_temp(expr_reg)
         }
         return t
     }
@@ -2084,39 +2253,6 @@ fn gen_expr(node) {
         } elif name == "set_to_array" {
             builtin_func = "llvm_val_set_to_array"
             is_builtin = true
-        } elif name == "sdl_init" {
-            builtin_func = "llvm_val_sdl_init"
-            is_builtin = true
-        } elif name == "sdl_quit" {
-            builtin_func = "llvm_val_sdl_quit"
-            is_builtin = true
-        } elif name == "sdl_window" {
-            builtin_func = "llvm_val_sdl_window"
-            is_builtin = true
-        } elif name == "sdl_destroy_window" {
-            builtin_func = "llvm_val_sdl_destroy_window"
-            is_builtin = true
-        } elif name == "sdl_poll_event" {
-            builtin_func = "llvm_val_sdl_poll_event"
-            is_builtin = true
-        } elif name == "sdl_clear" {
-            builtin_func = "llvm_val_sdl_clear"
-            is_builtin = true
-        } elif name == "sdl_present" {
-            builtin_func = "llvm_val_sdl_present"
-            is_builtin = true
-        } elif name == "sdl_draw_rect" {
-            builtin_func = "llvm_val_sdl_draw_rect"
-            is_builtin = true
-        } elif name == "sdl_draw_line" {
-            builtin_func = "llvm_val_sdl_draw_line"
-            is_builtin = true
-        } elif name == "sdl_delay" {
-            builtin_func = "llvm_val_sdl_delay"
-            is_builtin = true
-        } elif name == "sdl_ticks" {
-            builtin_func = "llvm_val_sdl_ticks"
-            is_builtin = true
         } elif name == "ffi_open" {
             builtin_func = "llvm_val_ffi_open"
             is_builtin = true
@@ -2223,6 +2359,14 @@ fn gen_expr(node) {
             } til j >= num_args
             emit_inst("call void @wyrm_fn_" + name + "(" + call_args + ")")
         }
+        // Tree Liveness Rule 1: release all argument temporaries after the call.
+        // Released in reverse order so the stack pointer recovers correctly.
+        var ri = num_args - 1
+        do {
+            if ri < 0 { break }
+            release_temp(arg_regs[ri])
+            ri = ri - 1
+        } til ri < 0
         return t
     }
     if type == "MemberAccess" {
@@ -2232,6 +2376,7 @@ fn gen_expr(node) {
         var member_const = get_llvm_str_constant(member)
         var t = gen_temp()
         emit_inst("call void @llvm_val_struct_get(ptr " + t + ", ptr " + obj_reg + ", ptr " + member_const + ")")
+        release_temp(obj_reg)
         return t
     }
     if type == "MethodCall" {
@@ -2256,6 +2401,14 @@ fn gen_expr(node) {
             j = j + 1
         } til j >= num_args
         emit_inst("call void @wyrm_fn_" + method + "(" + call_args + ")")
+        // Tree Liveness Rule 1: release argument temps and object reg after dispatch.
+        var ri = num_args - 1
+        do {
+            if ri < 0 { break }
+            release_temp(arg_regs[ri])
+            ri = ri - 1
+        } til ri < 0
+        release_temp(obj_reg)
         return t
     }
     
@@ -2264,6 +2417,10 @@ fn gen_expr(node) {
 }
 
 fn gen_statement(stmt) {
+    // Statement Boundary Reset (Rule 2): every top-level statement reuses the
+    // temporary pool from slot 0. The high-water mark accumulates across
+    // statements so FuncDef knows how many alloca slots to emit.
+    reset_temp_statement()
     var type = stmt[0]
     if type == "Use" {
         return
@@ -2276,6 +2433,51 @@ fn gen_statement(stmt) {
         var val_reg = gen_expr(val)
         var member_const = get_llvm_str_constant(member)
         emit_inst("call void @llvm_val_struct_set(ptr " + obj_reg + ", ptr " + member_const + ", ptr " + val_reg + ")")
+        return
+    }
+    if type == "EnumDef" {
+        var enum_name = stmt[1]
+        var variants = stmt[2]
+        var vi = 0
+        do {
+            if vi >= len(variants) { break }
+            var variant = variants[vi]
+            var variant_name = variant[0]
+            var fields = variant[1]
+            append(g_enum_variants, [variant_name, fields])
+
+            var num_f = len(fields)
+            var params_decl = "ptr %result_ptr"
+            var fi = 0
+            do {
+                if fi >= num_f { break }
+                params_decl = params_decl + ", ptr %arg_" + fields[fi]
+                fi = fi + 1
+            } til fi >= num_f
+
+            var ctor_code = "define void @wyrm_fn_" + variant_name + "(" + params_decl + ") {\n"
+            ctor_code = ctor_code + "  %enum_ptr = alloca %struct.Value, align 8\n"
+            ctor_code = ctor_code + "  %tag_ptr = alloca %struct.Value, align 8\n"
+            var enum_const = get_llvm_str_constant(enum_name + "::" + variant_name)
+            var tag_name_const = get_llvm_str_constant("__tag__")
+            var variant_const = get_llvm_str_constant(variant_name)
+            ctor_code = ctor_code + "  call void @llvm_val_struct_create(ptr %enum_ptr, ptr " + enum_const + ", i32 " + str(num_f + 1) + ")\n"
+            ctor_code = ctor_code + "  call void @llvm_val_string(ptr %tag_ptr, ptr " + variant_const + ")\n"
+            ctor_code = ctor_code + "  call void @llvm_val_struct_set(ptr %enum_ptr, ptr " + tag_name_const + ", ptr %tag_ptr)\n"
+            fi = 0
+            do {
+                if fi >= num_f { break }
+                var field_const = get_llvm_str_constant(fields[fi])
+                ctor_code = ctor_code + "  call void @llvm_val_struct_set(ptr %enum_ptr, ptr " + field_const + ", ptr %arg_" + fields[fi] + ")\n"
+                fi = fi + 1
+            } til fi >= num_f
+            ctor_code = ctor_code + "  call void @llvm_val_copy(ptr %result_ptr, ptr %enum_ptr)\n"
+            ctor_code = ctor_code + "  call void @llvm_val_drop(ptr %tag_ptr)\n"
+            ctor_code = ctor_code + "  call void @llvm_val_drop(ptr %enum_ptr)\n"
+            ctor_code = ctor_code + "  ret void\n}\n"
+            append(g_llvm_funcs, ctor_code)
+            vi = vi + 1
+        } til vi >= len(variants)
         return
     }
     if type == "StructDef" {
@@ -2332,40 +2534,93 @@ fn gen_statement(stmt) {
         var name = stmt[1]
         var params = stmt[2]
         var body = stmt[3]
-        
+
         var outer_types = current_local_types
         analyze_scope_types(body, params)
-        
+
         g_allocas[0] = []
         g_insts[0] = []
         temp_count[0] = 0
         g_scopes[0] = []
         declared_locals[0] = []
         g_func_owned[0] = []
-        
+
+        // Reset Temporary Slot Reuse Pool for this function.
+        g_temp_stack_top[0] = 0
+        g_temp_max_used[0] = 0
+
         push_scope()
-        
-        // Copy parameters to local variables so they can be mutated
+
+        // Build parameter declaration string and emit parameter prologues.
+        // Parameter format: either a plain string "p_name" (legacy unannotated)
+        // or an array [p_name, p_type] (annotated, from Phase 2 parser change).
         var i = 0
         var num_params = len(params)
         var params_decl = "ptr %result_ptr"
         do {
             if i >= num_params { break }
-            params_decl = params_decl + ", ptr %arg_" + params[i]
+            var p_info = params[i]
+            var p_name = p_info
+            if is_array(p_info) { p_name = p_info[0] }
+            params_decl = params_decl + ", ptr %arg_" + p_name
             i = i + 1
         } til i >= num_params
 
         i = 0
         do {
             if i >= num_params { break }
-            var p_name = params[i]
-            append(g_allocas[0], "  %wyrm_var_" + p_name + " = alloca %struct.Value, align 8")
+            var p_info = params[i]
+            var p_name = p_info
+            var p_type = ""
+            if is_array(p_info) {
+                p_name = p_info[0]
+                p_type = p_info[1]
+            }
+
+            var canon_p = canonical_type(p_type)
+            if p_type != "" and is_unboxed_type(canon_p) {
+                // Phase 2: Typed parameter - emit native alloca + unbox from Value arg.
+                var llvm_t = get_llvm_type(canon_p)
+                var llvm_a = get_llvm_align(canon_p)
+                append(g_allocas[0], "  %wyrm_var_" + p_name + " = alloca " + llvm_t + ", align " + llvm_a)
+                // Unbox: load the number field from the incoming Value pointer.
+                var raw_val = "%parg_raw_" + str(i)
+                var union_ptr = "%parg_union_" + str(i)
+                emit_inst(union_ptr + " = getelementptr %struct.Value, ptr %arg_" + p_name + ", i32 0, i32 1")
+                emit_inst(raw_val + " = load double, ptr " + union_ptr + ", align 8")
+                if canon_p == "i32" {
+                    var conv = "%parg_conv_" + str(i)
+                    emit_inst(conv + " = fptosi double " + raw_val + " to i32")
+                    emit_inst("store i32 " + conv + ", ptr %wyrm_var_" + p_name + ", align 4")
+                } elif canon_p == "i64" {
+                    var conv = "%parg_conv_" + str(i)
+                    emit_inst(conv + " = fptosi double " + raw_val + " to i64")
+                    emit_inst("store i64 " + conv + ", ptr %wyrm_var_" + p_name + ", align 8")
+                } elif canon_p == "u8" {
+                    var conv = "%parg_conv_" + str(i)
+                    emit_inst(conv + " = fptoui double " + raw_val + " to i8")
+                    emit_inst("store i8 " + conv + ", ptr %wyrm_var_" + p_name + ", align 1")
+                } elif canon_p == "f32" {
+                    var conv = "%parg_conv_" + str(i)
+                    emit_inst(conv + " = fptrunc double " + raw_val + " to float")
+                    emit_inst("store float " + conv + ", ptr %wyrm_var_" + p_name + ", align 4")
+                } elif canon_p == "f64" {
+                    emit_inst("store double " + raw_val + ", ptr %wyrm_var_" + p_name + ", align 8")
+                } elif canon_p == "bool" {
+                    var conv = "%parg_conv_" + str(i)
+                    emit_inst(conv + " = call i1 @llvm_val_to_bool(ptr %arg_" + p_name + ")")
+                    emit_inst("store i1 " + conv + ", ptr %wyrm_var_" + p_name + ", align 1")
+                }
+            } else {
+                // Dynamic parameter - classic Value alloca + copy.
+                append(g_allocas[0], "  %wyrm_var_" + p_name + " = alloca %struct.Value, align 8")
+                emit_inst("call void @llvm_val_copy(ptr %wyrm_var_" + p_name + ", ptr %arg_" + p_name + ")")
+            }
             append(declared_locals[0], p_name)
-            emit_inst("call void @llvm_val_copy(ptr %wyrm_var_" + p_name + ", ptr %arg_" + p_name + ")")
             i = i + 1
         } til i >= num_params
 
-        // Generate function body
+        // Generate function body.
         var j = 0
         var body_len = len(body)
         do {
@@ -2373,12 +2628,13 @@ fn gen_statement(stmt) {
             gen_statement(body[j])
             j = j + 1
         } til j >= body_len
-        
+
         pop_scope()
-        
-        // Function signature
+
+        // Build the complete function definition.
         var func_code = "define void @wyrm_fn_" + name + "(" + params_decl + ") {\n"
-        // Merge allocas and insts
+
+        // Emit named variable allocas (parameters + declared locals from g_allocas).
         var k = 0
         var allocas_list = g_allocas[0]
         var al = len(allocas_list)
@@ -2387,7 +2643,16 @@ fn gen_statement(stmt) {
             func_code = func_code + allocas_list[k] + "\n"
             k = k + 1
         } til k >= al
-        
+
+        // Emit exactly g_temp_max_used temporary slots (Temporary Slot Reuse Pool).
+        // This replaces the old approach that emitted one alloca per gen_temp() call.
+        var ti = 0
+        do {
+            if ti >= g_temp_max_used[0] { break }
+            func_code = func_code + "  %tmp_" + str(ti) + " = alloca %struct.Value, align 8\n"
+            ti = ti + 1
+        } til ti >= g_temp_max_used[0]
+
         k = 0
         var insts_list = g_insts[0]
         var il = len(insts_list)
@@ -2396,12 +2661,12 @@ fn gen_statement(stmt) {
             func_code = func_code + insts_list[k] + "\n"
             k = k + 1
         } til k >= il
-        
+
         func_code = func_code + "  call void @llvm_val_null(ptr %result_ptr)\n"
         func_code = func_code + "  ret void\n"
         func_code = func_code + "}\n"
         append(g_llvm_funcs, func_code)
-        
+
         in_function[0] = false
         current_local_types = outer_types
         return
@@ -2595,6 +2860,90 @@ fn gen_statement(stmt) {
             i = i + 1
         } til i >= num_exprs
         emit_inst("call void (i32, ...) @llvm_val_print(" + call_args + ")")
+        return
+    }
+    if type == "Match" {
+        var subject = stmt[1]
+        var arms = stmt[2]
+        var subject_reg = gen_expr(subject)
+        var tag_reg = gen_temp()
+        var tag_key = get_llvm_str_constant("__tag__")
+        emit_inst("call void @llvm_val_struct_get(ptr " + tag_reg + ", ptr " + subject_reg + ", ptr " + tag_key + ")")
+        var match_idx = temp_count[0]
+        temp_count[0] = temp_count[0] + 1
+        var merge_label = "match_merge_" + str(match_idx)
+        var default_arm = null
+        var ai = 0
+        do {
+            if ai >= len(arms) { break }
+            var arm = arms[ai]
+            if arm[0] == "default" {
+                default_arm = arm
+            } else {
+                var arm_label = "match_arm_" + str(match_idx) + "_" + str(ai)
+                var next_label = merge_label
+                if ai + 1 < len(arms) { next_label = "match_next_" + str(match_idx) + "_" + str(ai) }
+                var expected_reg = gen_temp()
+                var expected_const = get_llvm_str_constant(arm[0])
+                var equal_reg = gen_temp()
+                var cond_reg = "%match_cond_" + str(temp_count[0])
+                temp_count[0] = temp_count[0] + 1
+                emit_inst("call void @llvm_val_string(ptr " + expected_reg + ", ptr " + expected_const + ")")
+                emit_inst("call void @llvm_val_eq(ptr " + equal_reg + ", ptr " + tag_reg + ", ptr " + expected_reg + ")")
+                emit_inst(cond_reg + " = call i1 @llvm_val_to_bool(ptr " + equal_reg + ")")
+                emit_inst("br i1 " + cond_reg + ", label %" + arm_label + ", label %" + next_label)
+                emit_label(arm_label + ":")
+                var bindings = arm[1]
+                var fields = enum_variant_fields(arm[0])
+                var bi = 0
+                do {
+                    if bi >= len(bindings) { break }
+                    var binding = bindings[bi]
+                    var field_name = binding
+                    if bi < len(fields) { field_name = fields[bi] }
+                    if in_function[0] and not contains_val(declared_locals[0], binding) {
+                        append(g_allocas[0], "  %wyrm_var_" + binding + " = alloca %struct.Value, align 8")
+                        append(declared_locals[0], binding)
+                    }
+                    var binding_target = "%wyrm_var_" + binding
+                    if not in_function[0] {
+                        if not contains_val(emitted_globals[0], binding) {
+                            append(g_llvm_globals, "@wyrm_var_" + binding + " = global %struct.Value zeroinitializer, align 8")
+                            append(emitted_globals[0], binding)
+                        }
+                        binding_target = "@wyrm_var_" + binding
+                    }
+                    var field_key = get_llvm_str_constant(field_name)
+                    emit_inst("call void @llvm_val_struct_get(ptr " + binding_target + ", ptr " + subject_reg + ", ptr " + field_key + ")")
+                    bi = bi + 1
+                } til bi >= len(bindings)
+                push_scope()
+                var si = 0
+                var arm_body = arm[2]
+                do {
+                    if si >= len(arm_body) { break }
+                    gen_statement(arm_body[si])
+                    si = si + 1
+                } til si >= len(arm_body)
+                pop_scope()
+                emit_inst("br label %" + merge_label)
+                emit_label(next_label + ":")
+            }
+            ai = ai + 1
+        } til ai >= len(arms)
+        if default_arm != null {
+            push_scope()
+            var di = 0
+            var default_body = default_arm[2]
+            do {
+                if di >= len(default_body) { break }
+                gen_statement(default_body[di])
+                di = di + 1
+            } til di >= len(default_body)
+            pop_scope()
+        }
+        emit_inst("br label %" + merge_label)
+        emit_label(merge_label + ":")
         return
     }
     if type == "If" {
@@ -3075,7 +3424,7 @@ fn transpile_llvm(ast) {
     temp_count[0] = 0
     
     // Generate declarations
-    append(g_llvm_globals, "; Module generated by Wyrm 1.1.0 Self-Hosted LLVM backend")
+    append(g_llvm_globals, "; Module generated by Wyrm 1.2.0 Self-Hosted LLVM backend")
     append(g_llvm_globals, "target datalayout = \"e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128\"")
     append(g_llvm_globals, "target triple = \"x86_64-pc-windows-msvc\"")
     append(g_llvm_globals, "%struct.Value = type { i32, %union.anon }")
@@ -3474,7 +3823,7 @@ fn parse_file(path) {
 fn main() {
     var args = sys_args()
     if len(args) < 2 {
-        print("wyrmc 1.1.0")
+        print("wyrmc 1.2.0")
         print("Usage:")
         print("  wyrmc build <file.wyr> [-o <out.exe>]")
         print("  wyrmc run <file.wyr> [args...]")
@@ -3486,12 +3835,12 @@ fn main() {
 
     var command = args[1]
     if command == "--version" or command == "-v" or command == "version" {
-        print("wyrmc 1.1.0")
+        print("wyrmc 1.2.0")
         exit(0)
     }
 
     if command == "--help" or command == "-h" or command == "help" {
-        print("wyrmc 1.1.0")
+        print("wyrmc 1.2.0")
         print("Usage:")
         print("  wyrmc build <file.wyr> [-o <out.exe>]")
         print("  wyrmc run <file.wyr> [args...]")
@@ -3513,7 +3862,7 @@ fn main() {
             system("powershell -NoProfile -Command \"Get-ChildItem -Filter *.exe | ForEach-Object { if ((Test-Path ($_.BaseName + '.wyr')) -or $_.Name -eq 'output.exe' -or $_.Name -eq 'a.exe') { Remove-Item $_.FullName -Force } }\" 2>nul")
         }
         system("cmd.exe /c \"if exist .wyrm_cache rmdir /s /q .wyrm_cache 2>nul\"")
-        print("[wyrmc 1.1.0] Cleaned temporary build artifacts and cache.")
+        print("[wyrmc 1.2.0] Cleaned temporary build artifacts and cache.")
         exit(0)
     }
 
@@ -3650,5 +3999,5 @@ fn main() {
         exit(run_res)
     }
 
-    print("[wyrmc 1.1.0] Successfully compiled '" + source_file + "' -> Native Binary '" + out_exe + "'")
+    print("[wyrmc 1.2.0] Successfully compiled '" + source_file + "' -> Native Binary '" + out_exe + "'")
 }

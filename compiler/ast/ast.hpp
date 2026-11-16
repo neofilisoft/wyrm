@@ -131,16 +131,20 @@ public:
 
 class FunctionDefNode : public ASTNode {
 public:
-    std::unique_ptr<IdentifierNode> name;
+    std::unique_ptr<IdentifierNode> name; // null for lambda
     std::vector<std::unique_ptr<IdentifierNode>> params;
     std::vector<ASTNodePtr> body;
     std::vector<std::string> param_types;
     std::string return_type;
+    std::vector<std::string> type_params; // M4: generic type parameters, e.g. ["T", "U"]
+    bool is_async = false;                // M6: async fn flag
 
     FunctionDefNode(std::unique_ptr<IdentifierNode> n, std::vector<std::unique_ptr<IdentifierNode>> p, std::vector<ASTNodePtr> b,
-                    std::vector<std::string> p_types = {}, std::string ret_t = "")
+                    std::vector<std::string> p_types = {}, std::string ret_t = "",
+                    std::vector<std::string> t_params = {}, bool async_flag = false)
         : name(std::move(n)), params(std::move(p)), body(std::move(b)),
-          param_types(std::move(p_types)), return_type(std::move(ret_t)) {}
+          param_types(std::move(p_types)), return_type(std::move(ret_t)),
+          type_params(std::move(t_params)), is_async(async_flag) {}
     void accept(ASTVisitor* visitor) override;
 };
 
@@ -273,9 +277,12 @@ public:
     std::vector<std::string> fields;
     std::vector<std::string> field_types;
     std::vector<std::unique_ptr<FunctionDefNode>> methods;
+    std::vector<std::string> type_params; // M4: generic type parameters
 
-    StructDefNode(std::string n, std::vector<std::string> f, std::vector<std::unique_ptr<FunctionDefNode>> m, std::vector<std::string> f_types = {})
-        : name(std::move(n)), fields(std::move(f)), field_types(std::move(f_types)), methods(std::move(m)) {}
+    StructDefNode(std::string n, std::vector<std::string> f, std::vector<std::unique_ptr<FunctionDefNode>> m,
+                  std::vector<std::string> f_types = {}, std::vector<std::string> t_params = {})
+        : name(std::move(n)), fields(std::move(f)), field_types(std::move(f_types)),
+          methods(std::move(m)), type_params(std::move(t_params)) {}
     void accept(ASTVisitor* visitor) override;
 };
 
@@ -308,6 +315,97 @@ public:
 
     MethodCallNode(ASTNodePtr o, std::string m, std::vector<ASTNodePtr> a)
         : obj(std::move(o)), method_name(std::move(m)), args(std::move(a)) {}
+    void accept(ASTVisitor* visitor) override;
+};
+
+// ===========================================================================
+// M2: enum + match
+// ===========================================================================
+
+struct EnumVariant {
+    std::string name;
+    std::vector<std::string> fields;      // positional field names (may be empty)
+    std::vector<std::string> field_types; // corresponding type annotations
+};
+
+class EnumDefNode : public ASTNode {
+public:
+    std::string name;
+    std::vector<EnumVariant> variants;
+
+    EnumDefNode(std::string n, std::vector<EnumVariant> v)
+        : name(std::move(n)), variants(std::move(v)) {}
+    void accept(ASTVisitor* visitor) override;
+};
+
+struct MatchArm {
+    std::string variant_name;             // "Red", "_" (wildcard)
+    std::vector<std::string> bindings;    // bound variable names
+    std::vector<ASTNodePtr> body;
+};
+
+class MatchNode : public ASTNode {
+public:
+    ASTNodePtr subject;
+    std::vector<MatchArm> arms;
+
+    MatchNode(ASTNodePtr s, std::vector<MatchArm> a)
+        : subject(std::move(s)), arms(std::move(a)) {}
+    void accept(ASTVisitor* visitor) override;
+};
+
+// ===========================================================================
+// M3: try / catch / throw
+// ===========================================================================
+
+class ThrowNode : public ASTNode {
+public:
+    ASTNodePtr expr; // expression to throw (any Value)
+
+    explicit ThrowNode(ASTNodePtr e) : expr(std::move(e)) {}
+    void accept(ASTVisitor* visitor) override;
+};
+
+class TryCatchNode : public ASTNode {
+public:
+    std::vector<ASTNodePtr> try_body;
+    std::string catch_var;               // name bound to the caught value
+    std::vector<ASTNodePtr> catch_body;
+    std::vector<ASTNodePtr> finally_body; // may be empty
+
+    TryCatchNode(std::vector<ASTNodePtr> tb, std::string cv,
+                 std::vector<ASTNodePtr> cb, std::vector<ASTNodePtr> fb)
+        : try_body(std::move(tb)), catch_var(std::move(cv)),
+          catch_body(std::move(cb)), finally_body(std::move(fb)) {}
+    void accept(ASTVisitor* visitor) override;
+};
+
+// ===========================================================================
+// M5: Lambda / Closure
+// ===========================================================================
+
+class LambdaNode : public ASTNode {
+public:
+    std::vector<std::unique_ptr<IdentifierNode>> params;
+    std::vector<std::string> param_types;
+    std::vector<ASTNodePtr> body;
+
+    LambdaNode(std::vector<std::unique_ptr<IdentifierNode>> p,
+               std::vector<std::string> pt,
+               std::vector<ASTNodePtr> b)
+        : params(std::move(p)), param_types(std::move(pt)), body(std::move(b)) {}
+    void accept(ASTVisitor* visitor) override;
+};
+
+// ===========================================================================
+// M6: await expression
+// ===========================================================================
+
+class AwaitNode : public ASTNode {
+public:
+    ASTNodePtr expr;
+
+    explicit AwaitNode(ASTNodePtr e) : expr(std::move(e)) {}
     void accept(ASTVisitor* visitor) override;
 };
 
@@ -344,6 +442,16 @@ public:
     virtual void visit(MemberAccessNode* node) = 0;
     virtual void visit(MemberAssignNode* node) = 0;
     virtual void visit(MethodCallNode* node) = 0;
+    // M2
+    virtual void visit(EnumDefNode* node) = 0;
+    virtual void visit(MatchNode* node) = 0;
+    // M3
+    virtual void visit(ThrowNode* node) = 0;
+    virtual void visit(TryCatchNode* node) = 0;
+    // M5
+    virtual void visit(LambdaNode* node) = 0;
+    // M6
+    virtual void visit(AwaitNode* node) = 0;
 };
 
 inline void NumberNode::accept(ASTVisitor* visitor) { visitor->visit(this); }
@@ -376,6 +484,16 @@ inline void StructDefNode::accept(ASTVisitor* visitor) { visitor->visit(this); }
 inline void MemberAccessNode::accept(ASTVisitor* visitor) { visitor->visit(this); }
 inline void MemberAssignNode::accept(ASTVisitor* visitor) { visitor->visit(this); }
 inline void MethodCallNode::accept(ASTVisitor* visitor) { visitor->visit(this); }
+// M2
+inline void EnumDefNode::accept(ASTVisitor* visitor) { visitor->visit(this); }
+inline void MatchNode::accept(ASTVisitor* visitor) { visitor->visit(this); }
+// M3
+inline void ThrowNode::accept(ASTVisitor* visitor) { visitor->visit(this); }
+inline void TryCatchNode::accept(ASTVisitor* visitor) { visitor->visit(this); }
+// M5
+inline void LambdaNode::accept(ASTVisitor* visitor) { visitor->visit(this); }
+// M6
+inline void AwaitNode::accept(ASTVisitor* visitor) { visitor->visit(this); }
 
 } // namespace wyrm
 

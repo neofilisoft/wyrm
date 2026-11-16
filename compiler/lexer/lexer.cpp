@@ -16,7 +16,13 @@ const std::unordered_set<std::string_view> Lexer::KEYWORDS = {
     "return",
     "var", "dec", "use",
     "unsafe", "owned", "arena",
-    "struct", "weak", "lock"
+    "struct", "weak", "lock",
+    // M2: enum + match
+    "enum", "match", "case", "default",
+    // M3: error handling
+    "try", "catch", "throw", "finally",
+    // M6: async
+    "async", "await"
 };
 
 const std::unordered_set<char> Lexer::OPERATOR_CHARS = {
@@ -25,6 +31,7 @@ const std::unordered_set<char> Lexer::OPERATOR_CHARS = {
 
 const std::unordered_set<std::string_view> Lexer::OPERATOR_KEYS = {
     "+", "-", "*", "/", "//", "%",
+    "->",
     "=", "+=", "-=", "*=", "/=", "%=",
     "==", "!=", "<", ">", "<=", ">=",
     "&", "&&", "|", "||",

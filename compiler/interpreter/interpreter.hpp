@@ -67,6 +67,26 @@ struct ReturnSignal {
 struct BreakSignal {};
 struct ContinueSignal {};
 
+// M3: Thrown from visit(ThrowNode*), caught by visit(TryCatchNode*)
+struct WyrmThrowSignal {
+    Value value; // the thrown Value (string message or any type)
+    explicit WyrmThrowSignal(Value v) : value(std::move(v)) {}
+};
+
+// M2: Enum variant callable constructor
+class EnumVariantConstructor : public Callable {
+public:
+    std::string enum_name;
+    std::string variant_name;
+    std::vector<std::string> fields;
+
+    EnumVariantConstructor(std::string en, std::string vn, std::vector<std::string> f)
+        : enum_name(std::move(en)), variant_name(std::move(vn)), fields(std::move(f)) {}
+
+    Value call(const std::vector<Value>& args, Interpreter* interpreter) override;
+    bool is_builtin() const override { return true; }
+};
+
 class Interpreter : public ASTVisitor {
 public:
     std::shared_ptr<Environment> global_env;
@@ -120,7 +140,16 @@ public:
     void visit(MemberAccessNode* node) override;
     void visit(MemberAssignNode* node) override;
     void visit(MethodCallNode* node) override;
-
+    // M2
+    void visit(EnumDefNode* node) override;
+    void visit(MatchNode* node) override;
+    // M3
+    void visit(ThrowNode* node) override;
+    void visit(TryCatchNode* node) override;
+    // M5
+    void visit(LambdaNode* node) override;
+    // M6
+    void visit(AwaitNode* node) override;
 private:
     Value last_value_; // temporary storage for visited node returns
     std::vector<std::unique_ptr<Callable>> callables_alive_; // memory management for callables

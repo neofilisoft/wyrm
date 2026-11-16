@@ -1,5 +1,6 @@
 {
   "files.associations": {
     "*.wyr": "wyrm"
-  }
+  },
+  "cmake.sourceDirectory": "C:/Users/BEST/Desktop/wyrm/library/glsl"
 }
