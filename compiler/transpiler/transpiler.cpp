@@ -5,6 +5,7 @@
 #include <fstream>
 #include <sstream>
 #include <cstdlib>
+#include <algorithm>
 
 namespace wyrm {
 
@@ -85,6 +86,9 @@ std::string Transpiler::pop_scope() {
     for (const auto& alloc : scope.allocations) {
         cleanup += "wyrm_var_" + alloc + " = val_raw_free(wyrm_var_" + alloc + ");\n";
     }
+    for (auto it = scope.owned_values.rbegin(); it != scope.owned_values.rend(); ++it) {
+        cleanup += "val_drop(wyrm_var_" + *it + ");\n";
+    }
     return cleanup;
 }
 
@@ -96,6 +100,9 @@ std::string Transpiler::get_all_cleanups() {
         }
         for (const auto& alloc : it->allocations) {
             cleanup += "wyrm_var_" + alloc + " = val_raw_free(wyrm_var_" + alloc + ");\n";
+        }
+        for (auto owned = it->owned_values.rbegin(); owned != it->owned_values.rend(); ++owned) {
+            cleanup += "val_drop(wyrm_var_" + *owned + ");\n";
         }
     }
     return cleanup;
@@ -112,7 +119,9 @@ void Transpiler::emit(const std::string& stmt) {
 void Transpiler::visit_statement(ASTNode* stmt) {
     std::string res = evaluate(stmt);
     if (!res.empty()) {
-        if (dynamic_cast<FunctionCallNode*>(stmt) || 
+        if (dynamic_cast<FunctionCallNode*>(stmt) ||
+            dynamic_cast<MethodCallNode*>(stmt) ||
+            dynamic_cast<MemberAssignNode*>(stmt) ||
             dynamic_cast<ArenaAllocNode*>(stmt) || 
             dynamic_cast<ArenaResetNode*>(stmt)) {
             emit(res + ";");
@@ -493,6 +502,54 @@ void Transpiler::visit(FunctionCallNode* node) {
         "split", "join", "trim", "upper", "lower", "contains", "replace",
         "starts_with", "ends_with", "char_at", "ord_val", "chr_val", "to_bytes", "from_bytes"
     };
+    static const std::unordered_map<std::string, std::string> stdlib_functions = {
+        { "ffi_open", "ffi_open" }, { "ffi_sym", "ffi_sym" },
+        { "ffi_call", "ffi_call_fn" }, { "ffi_close", "ffi_close" },
+        { "json_parse", "json_parse" }, { "json_encode", "json_encode" },
+        { "json_pretty", "json_pretty" }, { "json_get", "json_get" },
+        { "json_has", "json_has" }, { "json_set", "json_set" },
+        { "json_object", "json_object" }, { "yaml_parse", "yaml_parse" },
+        { "yaml_encode", "yaml_encode" }, { "map_new", "map_new" },
+        { "map_set", "map_set" }, { "map_get", "map_get" },
+        { "map_has", "map_has" }, { "map_del", "map_del" },
+        { "map_keys", "map_keys" }, { "map_values", "map_values" },
+        { "map_len", "map_len" }, { "set_new", "set_new" },
+        { "set_add", "set_add" }, { "set_has", "set_has" },
+        { "set_del", "set_del" }, { "set_union", "set_union_fn" },
+        { "set_intersect", "set_intersect" }, { "set_to_array", "set_to_array" },
+        { "rand_seed", "rand_seed" }, { "rand", "rand_val" },
+        { "rand_int", "rand_int" }, { "rand_range", "rand_range" },
+        { "rand_choice", "rand_choice" }, { "rand_shuffle", "rand_shuffle" },
+        { "rand_secure", "rand_secure" }, { "rand_secure_int", "rand_secure_int" },
+        { "rand_bytes_hex", "rand_bytes_hex" }, { "rand_has_trng", "rand_has_trng" },
+        { "rand_trng", "rand_trng" }, { "rand_trng_int", "rand_trng_int" },
+        { "rand_reseed_trng", "rand_reseed_trng" }, { "time_now", "time_now" },
+        { "time_unix", "time_unix" }, { "time_unix_ms", "time_unix_ms" },
+        { "time_monotonic", "time_monotonic" }, { "time_monotonic_ms", "time_monotonic_ms" },
+        { "time_monotonic_ns", "time_monotonic_ns" }, { "time_sleep", "time_sleep_ms" },
+        { "time_diff", "time_diff" }, { "time_format", "time_format_utc" },
+        { "time_format_local", "time_format_local" }, { "os_args", "os_args" },
+        { "os_env", "os_env" }, { "os_setenv", "os_setenv" },
+        { "os_unsetenv", "os_unsetenv" }, { "os_cwd", "os_cwd" },
+        { "os_chdir", "os_chdir" }, { "os_exit", "os_exit" },
+        { "os_exec", "os_exec" }, { "os_platform", "os_platform" },
+        { "os_sep", "os_sep" }, { "os_environ", "os_environ" },
+        { "fs_read", "fs_read" }, { "fs_write", "fs_write" },
+        { "fs_append", "fs_append" }, { "fs_exists", "fs_exists" },
+        { "fs_delete", "fs_delete" }, { "fs_mkdir", "fs_mkdir" },
+        { "fs_rmdir", "fs_rmdir" }, { "fs_readdir", "fs_readdir" },
+        { "fs_stat", "fs_stat" }, { "fs_copy", "fs_copy" }, { "fs_move", "fs_move" },
+        { "path_join", "path_join" }, { "path_basename", "path_basename" },
+        { "path_dirname", "path_dirname" }, { "path_ext", "path_ext" },
+        { "path_abs", "path_abs" }, { "path_is_abs", "path_is_abs" },
+        { "path_stem", "path_stem" }, { "path_with_ext", "path_with_ext" },
+        { "io_stdin", "io_stdin" }, { "io_readline", "io_readline" },
+        { "io_write", "io_write" }, { "io_writeln", "io_writeln" },
+        { "io_flush", "io_flush" }, { "io_stderr", "io_stderr" },
+        { "io_stderrln", "io_stderrln" }, { "http_get", "http_get" },
+        { "http_post", "http_post" }, { "http_post_json", "http_post_json" },
+        { "http_get_headers", "http_get_headers" }, { "http_available", "http_available" }
+    };
 
     if (builtins.count(func_name)) {
         if (func_name == "input") {
@@ -515,6 +572,9 @@ void Transpiler::visit(FunctionCallNode* node) {
             else if (func_name == "lock") c_fn = "val_weak_lock";
             last_result_ = c_fn + "(" + args_str + ")";
         }
+    } else if (auto stdlib_function = stdlib_functions.find(func_name);
+               stdlib_function != stdlib_functions.end()) {
+        last_result_ = stdlib_function->second + "(" + args_str + ")";
     } else {
         std::string c_fn;
         auto enum_variant = enum_variant_functions.find(func_name);
@@ -556,6 +616,15 @@ void Transpiler::visit(SliceNode* node) {
 
 void Transpiler::visit(ReturnNode* node) {
     std::string expr = node->expr ? evaluate(node->expr.get()) : "val_null()";
+    if (auto* identifier = dynamic_cast<IdentifierNode*>(node->expr.get())) {
+        for (auto& scope : scopes) {
+            auto owned = std::find(scope.owned_values.begin(), scope.owned_values.end(), identifier->name);
+            if (owned != scope.owned_values.end()) {
+                scope.owned_values.erase(owned);
+                break;
+            }
+        }
+    }
     std::string cleanups = get_all_cleanups();
     if (!cleanups.empty()) {
         std::stringstream ss(cleanups);
@@ -736,6 +805,9 @@ void Transpiler::visit(OwnedDeclNode* node) {
     if (is_const) {
         constants.insert(var_name);
     }
+    if (in_function && !scopes.empty()) {
+        scopes.back().owned_values.push_back(var_name);
+    }
     last_result_ = c_var;
 }
 
@@ -769,7 +841,8 @@ void Transpiler::visit(StructDefNode* node) {
     }
     header_lines.push_back("Value " + fn_name + "(" + params_str + ");");
 
-    emit("Value " + fn_name + "(" + params_str + ") {");
+    std::vector<std::string> constructor_lines;
+    constructor_lines.push_back("\nValue " + fn_name + "(" + params_str + ") {");
     if (!node->fields.empty()) {
         std::string fields_array = "const char *field_names[] = { ";
         std::string vals_array = "Value field_vals[] = { ";
@@ -783,13 +856,14 @@ void Transpiler::visit(StructDefNode* node) {
         }
         fields_array += " };";
         vals_array += " };";
-        emit(fields_array);
-        emit(vals_array);
-        emit("return val_struct_create(\"" + node->name + "\", " + std::to_string(node->fields.size()) + ", field_names, field_vals);");
+        constructor_lines.push_back("    " + fields_array);
+        constructor_lines.push_back("    " + vals_array);
+        constructor_lines.push_back("    return val_struct_create(\"" + node->name + "\", " + std::to_string(node->fields.size()) + ", field_names, field_vals);");
     } else {
-        emit("return val_struct_create(\"" + node->name + "\", 0, NULL, NULL);");
+        constructor_lines.push_back("    return val_struct_create(\"" + node->name + "\", 0, NULL, NULL);");
     }
-    emit("}\n");
+    constructor_lines.push_back("}");
+    function_lines.insert(function_lines.end(), constructor_lines.begin(), constructor_lines.end());
 
     for (auto& method : node->methods) {
         visit_statement(method.get());

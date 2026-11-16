@@ -8,6 +8,7 @@
 #include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
+#include <ctype.h>
 
 typedef enum {
     VAL_NULL,
@@ -17,7 +18,8 @@ typedef enum {
     VAL_ARRAY,
     VAL_STRUCT,
     VAL_RAW_PTR,
-    VAL_ERROR
+    VAL_ERROR,
+    VAL_WEAK_REF
 } ValueType;
 
 struct Value;
@@ -36,6 +38,7 @@ typedef struct WyrmStruct {
     char **field_names;
     struct Value *fields;
     int ref_count;
+    int weak_count;
 } WyrmStruct;
 
 typedef struct Value {
@@ -106,6 +109,8 @@ Value val_array_slice(Value arr, Value start, Value end);
 Value val_struct_create(const char *type_name, int field_count, const char **field_names, const Value *initial_fields);
 Value val_struct_get(Value s, const char *field_name);
 Value val_struct_set(Value s, const char *field_name, Value new_val);
+Value val_weak_ref(Value st);
+Value val_weak_lock(Value w);
 
 // Raw memory safety operations
 Value val_raw_malloc(Value size);
@@ -247,18 +252,6 @@ void llvm_val_set_union(Value *res, Value *a, Value *b);
 void llvm_val_set_intersect(Value *res, Value *a, Value *b);
 void llvm_val_set_to_array(Value *res, Value *s);
 
-void llvm_val_sdl_init(Value *res);
-void llvm_val_sdl_quit(Value *res);
-void llvm_val_sdl_window(Value *res, Value *title, Value *w, Value *h);
-void llvm_val_sdl_destroy_window(Value *res, Value *win);
-void llvm_val_sdl_poll_event(Value *res);
-void llvm_val_sdl_clear(Value *res, Value *win, Value *r, Value *g, Value *b);
-void llvm_val_sdl_present(Value *res, Value *win);
-void llvm_val_sdl_draw_rect(Value *res, Value *win, Value *x, Value *y, Value *w, Value *h, Value *r, Value *g, Value *b);
-void llvm_val_sdl_draw_line(Value *res, Value *win, Value *x1, Value *y1, Value *x2, Value *y2, Value *r, Value *g, Value *b);
-void llvm_val_sdl_delay(Value *res, Value *ms);
-void llvm_val_sdl_ticks(Value *res);
-
 void llvm_val_ffi_open(Value *res, Value *path);
 void llvm_val_ffi_sym(Value *res, Value *lib, Value *sym);
 void llvm_val_ffi_call(Value *res, Value *fn_ptr, Value *args);
@@ -288,5 +281,8 @@ void llvm_val_time_sleep(Value *res, Value *ms);
 void llvm_val_time_diff(Value *res, Value *start, Value *end);
 void llvm_val_time_format(Value *res, Value *ts, Value *fmt);
 void llvm_val_time_format_local(Value *res, Value *ts, Value *fmt);
+
+void llvm_val_weak_ref(Value *res, Value *st);
+void llvm_val_weak_lock(Value *res, Value *w);
 
 #endif // WYRM_CORE_H

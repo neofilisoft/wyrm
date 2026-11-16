@@ -3,8 +3,8 @@ Wyrm:
   color: "#6f3799"
   extensions:
     - ".wyr"
-  tm_scope: source.wyrm
+  tm_scope: source.wyr
   ace_mode: text
   codemirror_mode: clike
   codemirror_mime_type: text/x-wyrm
-  language_id: 87463920
+  language_id: 0 # PLACEHOLDER

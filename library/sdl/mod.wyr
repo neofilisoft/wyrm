@@ -1,0 +1,178 @@
+// library/sdl/mod.wyr - External SDL2 Dynamic Binding Package for Wyrm
+//
+// Loads SDL2 at runtime via the Wyrm FFI subsystem.
+// Platform search order: SDL2.dll (Windows) -> libSDL2.so (Linux) -> libSDL2-2.0.dylib (macOS)
+use ffi;
+
+// --- Private handle store ---
+var g_sdl_lib         = [null]
+var g_sdl_init_fn     = [null]
+var g_sdl_quit_fn     = [null]
+var g_sdl_ticks_fn    = [null]
+var g_sdl_delay_fn    = [null]
+var g_sdl_window_fn   = [null]
+var g_sdl_destroy_fn  = [null]
+var g_sdl_renderer_fn = [null]
+var g_sdl_destroy_rend_fn = [null]
+var g_sdl_set_color_fn = [null]
+var g_sdl_clear_fn    = [null]
+var g_sdl_present_fn  = [null]
+var g_sdl_event_fn    = [null]
+var g_sdl_draw_rect_fn = [null]
+var g_sdl_draw_line_fn = [null]
+
+// --- Internal: load SDL2 library and resolve all symbols ---
+fn _sdl_load() {
+    if g_sdl_lib[0] != null {
+        return true
+    }
+    var lib = ffi_open("SDL2.dll")
+    if lib == null {
+        lib = ffi_open("libSDL2.so")
+    }
+    if lib == null {
+        lib = ffi_open("libSDL2-2.0.so.0")
+    }
+    if lib == null {
+        lib = ffi_open("libSDL2-2.0.0.dylib")
+    }
+    if lib == null {
+        print("Error: Could not load SDL2 dynamic library. Install SDL2 and ensure it is on PATH.")
+        return false
+    }
+    g_sdl_lib[0]          = lib
+    g_sdl_init_fn[0]      = ffi_sym(lib, "SDL_Init")
+    g_sdl_quit_fn[0]      = ffi_sym(lib, "SDL_Quit")
+    g_sdl_ticks_fn[0]     = ffi_sym(lib, "SDL_GetTicks")
+    g_sdl_delay_fn[0]     = ffi_sym(lib, "SDL_Delay")
+    g_sdl_window_fn[0]    = ffi_sym(lib, "SDL_CreateWindow")
+    g_sdl_destroy_fn[0]   = ffi_sym(lib, "SDL_DestroyWindow")
+    g_sdl_renderer_fn[0]  = ffi_sym(lib, "SDL_CreateRenderer")
+    g_sdl_destroy_rend_fn[0] = ffi_sym(lib, "SDL_DestroyRenderer")
+    g_sdl_set_color_fn[0] = ffi_sym(lib, "SDL_SetRenderDrawColor")
+    g_sdl_clear_fn[0]     = ffi_sym(lib, "SDL_RenderClear")
+    g_sdl_present_fn[0]   = ffi_sym(lib, "SDL_RenderPresent")
+    g_sdl_event_fn[0]     = ffi_sym(lib, "SDL_PollEvent")
+    g_sdl_draw_rect_fn[0] = ffi_sym(lib, "SDL_RenderDrawRect")
+    g_sdl_draw_line_fn[0] = ffi_sym(lib, "SDL_RenderDrawLine")
+    return true
+}
+
+// --- Public API ---
+
+// Initialize SDL2 video subsystem. Returns true on success.
+fn sdl_init() {
+    if !_sdl_load() {
+        return false
+    }
+    // SDL_INIT_VIDEO = 0x00000020
+    ffi_call(g_sdl_init_fn[0], [32])
+    return true
+}
+
+// Shut down SDL2 and unload the library.
+fn sdl_quit() {
+    if g_sdl_quit_fn[0] != null {
+        ffi_call(g_sdl_quit_fn[0], [])
+    }
+    if g_sdl_lib[0] != null {
+        ffi_close(g_sdl_lib[0])
+        g_sdl_lib[0] = null
+    }
+}
+
+// Create a centered window. Returns an opaque window handle.
+fn sdl_window(title, w, h) {
+    if g_sdl_window_fn[0] == null {
+        return null
+    }
+    // SDL_WINDOWPOS_CENTERED = 0x2FFF0000|0
+    return ffi_call(g_sdl_window_fn[0], [title, 805240832, 805240832, w, h, 4])
+}
+
+// Destroy a window previously created with sdl_window.
+fn sdl_destroy_window(win) {
+    if g_sdl_destroy_fn[0] != null {
+        ffi_call(g_sdl_destroy_fn[0], [win])
+    }
+}
+
+// Create a hardware-accelerated renderer for the given window.
+fn sdl_renderer(win) {
+    if g_sdl_renderer_fn[0] == null {
+        return null
+    }
+    // index=-1 selects first available driver; SDL_RENDERER_ACCELERATED=2
+    return ffi_call(g_sdl_renderer_fn[0], [win, -1, 2])
+}
+
+// Destroy a renderer previously created with sdl_renderer.
+fn sdl_destroy_renderer(rend) {
+    if g_sdl_destroy_rend_fn[0] != null {
+        ffi_call(g_sdl_destroy_rend_fn[0], [rend])
+    }
+}
+
+// Clear the renderer with the given RGBA color.
+fn sdl_clear(rend, r, g, b) {
+    if g_sdl_set_color_fn[0] != null {
+        ffi_call(g_sdl_set_color_fn[0], [rend, r, g, b, 255])
+    }
+    if g_sdl_clear_fn[0] != null {
+        ffi_call(g_sdl_clear_fn[0], [rend])
+    }
+}
+
+// Flip the renderer's back-buffer to screen.
+fn sdl_present(rend) {
+    if g_sdl_present_fn[0] != null {
+        ffi_call(g_sdl_present_fn[0], [rend])
+    }
+}
+
+// Poll the event queue. Returns a map with key "type" and optional "key".
+// type: 0 = no event, 256 = SDL_QUIT, 768 = SDL_KEYDOWN
+fn sdl_poll_event() {
+    var ev = {"type": 0, "key": ""}
+    if g_sdl_event_fn[0] != null {
+        var raw = ffi_call(g_sdl_event_fn[0], [])
+        if raw != null {
+            ev["type"] = raw
+        }
+    }
+    return ev
+}
+
+// Draw a filled rectangle. x, y, w, h are in pixels.
+fn sdl_draw_rect(rend, x, y, w, h) {
+    if g_sdl_draw_rect_fn[0] != null {
+        ffi_call(g_sdl_draw_rect_fn[0], [rend, x, y, w, h])
+    }
+}
+
+// Draw a line from (x1,y1) to (x2,y2).
+fn sdl_draw_line(rend, x1, y1, x2, y2) {
+    if g_sdl_draw_line_fn[0] != null {
+        ffi_call(g_sdl_draw_line_fn[0], [rend, x1, y1, x2, y2])
+    }
+}
+
+// Return milliseconds elapsed since SDL init.
+fn sdl_ticks() {
+    if g_sdl_ticks_fn[0] != null {
+        return ffi_call(g_sdl_ticks_fn[0], [])
+    }
+    return 0
+}
+
+// Sleep for ms milliseconds.
+fn sdl_delay(ms) {
+    if g_sdl_delay_fn[0] != null {
+        ffi_call(g_sdl_delay_fn[0], [ms])
+    }
+}
+
+// Event type constants (matches SDL2 SDL_EventType values)
+var SDL_QUIT    = 256
+var SDL_KEYDOWN = 768
+var SDL_KEYUP   = 769

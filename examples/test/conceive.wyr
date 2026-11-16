@@ -1,5 +1,5 @@
 // ============================================================
-//  conceive.wyr - Wyrm v3.2+ Breeding & Identity Simulation
+//  conceive.wyr 
 // ============================================================
 
 use std.json;
@@ -124,10 +124,10 @@ fn main() {
         print("RNG seeded via high-precision timestamp")
     }
 
-    print("=== RNG Intercourse System (Wyrm v3.2+) ===")
+    print("=== RNG Intercourse System (Wyrm) ===")
     print("")
 
-    // 10 รอบสุ่มคู่ผสมพันธุ์
+    // 10 รอบสุ่มคู่
     var i = 1
     do {
         print("time number " + str(i) + ":")

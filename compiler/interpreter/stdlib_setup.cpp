@@ -23,10 +23,14 @@ extern "C" {
 #include "../../wyrm/lib/wyrm_ffi.h"
 #include "../../wyrm/lib/stdlib/wyrm_std_json.h"
 #include "../../wyrm/lib/stdlib/wyrm_std_yaml.h"
-#include "../../wyrm/lib/stdlib/wyrm_std_sdl.h"
 #include "../../wyrm/lib/stdlib/wyrm_std_collections.h"
 #include "../../wyrm/lib/stdlib/wyrm_std_random.h"
 #include "../../wyrm/lib/stdlib/wyrm_std_time.h"
+#include "../../wyrm/lib/stdlib/wyrm_std_os.h"
+#include "../../wyrm/lib/stdlib/wyrm_std_fs.h"
+#include "../../wyrm/lib/stdlib/wyrm_std_path.h"
+#include "../../wyrm/lib/stdlib/wyrm_std_io.h"
+#include "../../wyrm/lib/stdlib/wyrm_std_http.h"
 }
 
 namespace wyrm {
@@ -103,41 +107,6 @@ void register_yaml(Environment& env) {
     reg(env, "yaml_encode", wrap1(yaml_encode));
 }
 
-/* ============================================================
- * SDL2 module: std.sdl
- * ============================================================ */
-void register_sdl(Environment& env) {
-    reg(env, "sdl_init",           wrap0(sdl_init));
-    reg(env, "sdl_quit",           wrap0(sdl_quit));
-    reg(env, "sdl_ticks",          wrap0(sdl_ticks));
-    reg(env, "sdl_poll_event",     wrap0(sdl_poll_event));
-    reg(env, "sdl_delay",          wrap1(sdl_delay));
-    reg(env, "sdl_destroy_window", wrap1(sdl_destroy_window));
-    reg(env, "sdl_window", [](const std::vector<Value>& args) -> Value {
-        if (args.size() < 3) throw std::runtime_error("sdl_window: expected (title, width, height)");
-        return sdl_window(args[0], args[1], args[2]);
-    });
-    reg(env, "sdl_clear", [](const std::vector<Value>& args) -> Value {
-        if (args.size() < 4) throw std::runtime_error("sdl_clear: expected (win, r, g, b)");
-        return sdl_clear(args[0], args[1], args[2], args[3]);
-    });
-    reg(env, "sdl_present", wrap1(sdl_present));
-    reg(env, "sdl_draw_rect", [](const std::vector<Value>& args) -> Value {
-        if (args.size() < 8) throw std::runtime_error("sdl_draw_rect: expected (win, x, y, w, h, r, g, b)");
-        return sdl_draw_rect(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7]);
-    });
-    reg(env, "sdl_draw_line", [](const std::vector<Value>& args) -> Value {
-        if (args.size() < 8) throw std::runtime_error("sdl_draw_line: expected (win, x1, y1, x2, y2, r, g, b)");
-        return sdl_draw_line(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7]);
-    });
-    // Register SDL event type string constants
-    env.define("SDL_QUIT",        val_string(WYRM_SDL_EVT_QUIT));
-    env.define("SDL_KEYDOWN",     val_string(WYRM_SDL_EVT_KEYDOWN));
-    env.define("SDL_KEYUP",       val_string(WYRM_SDL_EVT_KEYUP));
-    env.define("SDL_MOUSEMOTION", val_string(WYRM_SDL_EVT_MOUSEMOTION));
-    env.define("SDL_MOUSEDOWN",   val_string(WYRM_SDL_EVT_MOUSEDOWN));
-    env.define("SDL_MOUSEUP",     val_string(WYRM_SDL_EVT_MOUSEUP));
-}
 
 /* ============================================================
  * Threading module: std.thread
@@ -303,6 +272,78 @@ void register_random(Environment& env) {
     reg(env, "rand_reseed_trng", wrap0(rand_reseed_trng));
 }
 
+/* ============================================================
+ * OS module: std.os
+ * ============================================================ */
+void register_os(Environment& env) {
+    reg(env, "os_args",      [](const std::vector<Value>&) -> Value { return os_args(); });
+    reg(env, "os_env",       wrap1(os_env));
+    reg(env, "os_setenv",    wrap2(os_setenv));
+    reg(env, "os_unsetenv",  wrap1(os_unsetenv));
+    reg(env, "os_cwd",       [](const std::vector<Value>&) -> Value { return os_cwd(); });
+    reg(env, "os_chdir",     wrap1(os_chdir));
+    reg(env, "os_exit",      wrap1(os_exit));
+    reg(env, "os_exec",      wrap1(os_exec));
+    reg(env, "os_platform",  [](const std::vector<Value>&) -> Value { return os_platform(); });
+    reg(env, "os_sep",       [](const std::vector<Value>&) -> Value { return os_sep(); });
+    reg(env, "os_environ",   [](const std::vector<Value>&) -> Value { return os_environ(); });
+}
+
+/* ============================================================
+ * FS module: std.fs
+ * ============================================================ */
+void register_fs(Environment& env) {
+    reg(env, "fs_read",    wrap1(fs_read));
+    reg(env, "fs_write",   wrap2(fs_write));
+    reg(env, "fs_append",  wrap2(fs_append));
+    reg(env, "fs_exists",  wrap1(fs_exists));
+    reg(env, "fs_delete",  wrap1(fs_delete));
+    reg(env, "fs_mkdir",   wrap1(fs_mkdir));
+    reg(env, "fs_rmdir",   wrap1(fs_rmdir));
+    reg(env, "fs_readdir", wrap1(fs_readdir));
+    reg(env, "fs_stat",    wrap1(fs_stat));
+    reg(env, "fs_copy",    wrap2(fs_copy));
+    reg(env, "fs_move",    wrap2(fs_move));
+}
+
+/* ============================================================
+ * Path module: std.path
+ * ============================================================ */
+void register_path(Environment& env) {
+    reg(env, "path_join",      wrap2(path_join));
+    reg(env, "path_basename",  wrap1(path_basename));
+    reg(env, "path_dirname",   wrap1(path_dirname));
+    reg(env, "path_ext",       wrap1(path_ext));
+    reg(env, "path_abs",       wrap1(path_abs));
+    reg(env, "path_is_abs",    wrap1(path_is_abs));
+    reg(env, "path_stem",      wrap1(path_stem));
+    reg(env, "path_with_ext",  wrap2(path_with_ext));
+}
+
+/* ============================================================
+ * IO module: std.io
+ * ============================================================ */
+void register_io(Environment& env) {
+    reg(env, "io_stdin",    [](const std::vector<Value>&) -> Value { return io_stdin(); });
+    reg(env, "io_readline", [](const std::vector<Value>&) -> Value { return io_readline(); });
+    reg(env, "io_write",    wrap1(io_write));
+    reg(env, "io_writeln",  wrap1(io_writeln));
+    reg(env, "io_flush",    [](const std::vector<Value>&) -> Value { return io_flush(); });
+    reg(env, "io_stderr",   wrap1(io_stderr));
+    reg(env, "io_stderrln", wrap1(io_stderrln));
+}
+
+/* ============================================================
+ * HTTP module: std.http
+ * ============================================================ */
+void register_http(Environment& env) {
+    reg(env, "http_get",         wrap1(http_get));
+    reg(env, "http_post",        wrap2(http_post));
+    reg(env, "http_post_json",   wrap2(http_post_json));
+    reg(env, "http_get_headers", wrap2(http_get_headers));
+    reg(env, "http_available",   [](const std::vector<Value>&) -> Value { return http_available(); });
+}
+
 void register_time(Environment& env) {
     reg(env, "time_now",          wrap0(time_now));
     reg(env, "time_unix",         wrap0(time_unix));
@@ -322,14 +363,32 @@ void register_time(Environment& env) {
 bool try_register(const std::string& module_path, Environment& env) {
     static const std::unordered_map<std::string,
         void(*)(Environment&)> dispatch_table = {
+        // Canonical paths
         { "std.ffi",         register_ffi         },
         { "std.json",        register_json        },
         { "std.yaml",        register_yaml        },
-        { "std.sdl",         register_sdl         },
         { "std.thread",      register_thread      },
         { "std.collections", register_collections },
         { "std.random",      register_random      },
         { "std.time",        register_time        },
+        { "std.os",          register_os          },
+        { "std.fs",          register_fs          },
+        { "std.path",        register_path        },
+        { "std.io",          register_io          },
+        { "std.http",        register_http        },
+        // Dual-Aliasing short names
+        { "ffi",             register_ffi         },
+        { "json",            register_json        },
+        { "yaml",            register_yaml        },
+        { "thread",          register_thread      },
+        { "collections",     register_collections },
+        { "random",          register_random      },
+        { "time",            register_time        },
+        { "os",              register_os          },
+        { "fs",              register_fs          },
+        { "path",            register_path        },
+        { "io",              register_io          },
+        { "http",            register_http        },
     };
     auto it = dispatch_table.find(module_path);
     if (it == dispatch_table.end()) return false;

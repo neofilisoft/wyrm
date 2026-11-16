@@ -1,0 +1,266 @@
+/// std.log - Wyrm Standard Structured Logging Library
+/// Provides leveled logging (DEBUG, INFO, WARN, ERROR, FATAL), optional
+/// timestamps, indented scope blocks, and configurable output formatting.
+///
+/// Usage:
+///   use std.log;
+///   log_init("MyApp", LOG_LEVEL_DEBUG)
+///   log_info("Server started on port 8080")
+///   log_error("Failed to open file: " + path)
+
+// -------------------------------------------------------------------------
+// Log Levels (integer constants)
+// -------------------------------------------------------------------------
+
+dec LOG_LEVEL_DEBUG = 0
+dec LOG_LEVEL_INFO  = 1
+dec LOG_LEVEL_WARN  = 2
+dec LOG_LEVEL_ERROR = 3
+dec LOG_LEVEL_FATAL = 4
+dec LOG_LEVEL_OFF   = 5
+
+// -------------------------------------------------------------------------
+// Internal logger state (module-level mutable globals)
+// -------------------------------------------------------------------------
+
+var _log_app_name     = "wyrm"
+var _log_min_level    = LOG_LEVEL_DEBUG
+var _log_timestamps   = false
+var _log_indent       = 0
+var _log_color        = true
+var _log_indent_str   = "  "
+
+// -------------------------------------------------------------------------
+// Initialization
+// -------------------------------------------------------------------------
+
+/// Initializes the logger with an application name and minimum log level.
+/// level: one of LOG_LEVEL_DEBUG, LOG_LEVEL_INFO, LOG_LEVEL_WARN,
+///              LOG_LEVEL_ERROR, LOG_LEVEL_FATAL, LOG_LEVEL_OFF
+fn log_init(app_name, level) {
+    _log_app_name  = app_name
+    _log_min_level = level
+}
+
+/// Enables or disables timestamp prefixes in log output.
+fn log_set_timestamps(enabled) {
+    _log_timestamps = enabled
+}
+
+/// Sets the minimum log level threshold. Messages below this level are ignored.
+fn log_set_level(level) {
+    _log_min_level = level
+}
+
+/// Enables or disables ANSI color output.
+fn log_set_color(enabled) {
+    _log_color = enabled
+}
+
+/// Sets the indentation string used per nesting level (default: "  ").
+fn log_set_indent_str(s) {
+    _log_indent_str = s
+}
+
+// -------------------------------------------------------------------------
+// Internal helpers
+// -------------------------------------------------------------------------
+
+fn _log_level_name(level) {
+    if level == LOG_LEVEL_DEBUG { return "DEBUG" }
+    if level == LOG_LEVEL_INFO  { return "INFO " }
+    if level == LOG_LEVEL_WARN  { return "WARN " }
+    if level == LOG_LEVEL_ERROR { return "ERROR" }
+    if level == LOG_LEVEL_FATAL { return "FATAL" }
+    return "?????"
+}
+
+fn _log_level_color(level) {
+    if !_log_color { return "" }
+    // Cyan
+    if level == LOG_LEVEL_DEBUG { return "\x1b[36m" }
+    // Green
+    if level == LOG_LEVEL_INFO  { return "\x1b[32m" }
+    // Yellow
+    if level == LOG_LEVEL_WARN  { return "\x1b[33m" }
+    // Red
+    if level == LOG_LEVEL_ERROR { return "\x1b[31m" }
+    // Magenta
+    if level == LOG_LEVEL_FATAL { return "\x1b[35m" }
+    return ""
+}
+
+dec _LOG_RESET = "\x1b[0m"
+
+fn _log_indent_prefix() {
+    var prefix = ""
+    var i = 0
+    do {
+        prefix = prefix + _log_indent_str
+        i = i + 1
+    } til i >= _log_indent
+    return prefix
+}
+
+fn _log_build_line(level, msg) {
+    var parts = ""
+    if _log_timestamps {
+        use std.time;
+        var ts = time_format_local(time_unix(), "%H:%M:%S")
+        parts = parts + "[" + ts + "] "
+    }
+    var color = _log_level_color(level)
+    var reset = ""
+    if _log_color { reset = _LOG_RESET }
+    parts = parts + color + "[" + _log_level_name(level) + "]" + reset
+    parts = parts + " " + _log_app_name + ": "
+    parts = parts + _log_indent_prefix()
+    parts = parts + msg
+    return parts
+}
+
+// -------------------------------------------------------------------------
+// Core logging functions
+// -------------------------------------------------------------------------
+
+/// Logs a message at the given level.
+fn log_write(level, msg) {
+    if level < _log_min_level { return }
+    print(_log_build_line(level, msg))
+}
+
+/// Logs a DEBUG message. Useful for verbose development output.
+fn log_debug(msg) {
+    log_write(LOG_LEVEL_DEBUG, msg)
+}
+
+/// Logs an INFO message. Normal operational events.
+fn log_info(msg) {
+    log_write(LOG_LEVEL_INFO, msg)
+}
+
+/// Logs a WARN message. Unexpected but recoverable conditions.
+fn log_warn(msg) {
+    log_write(LOG_LEVEL_WARN, msg)
+}
+
+/// Logs an ERROR message. Serious failures that need immediate attention.
+fn log_error(msg) {
+    log_write(LOG_LEVEL_ERROR, msg)
+}
+
+/// Logs a FATAL message then terminates the process with exit code 1.
+fn log_fatal(msg) {
+    log_write(LOG_LEVEL_FATAL, msg)
+    use std.os;
+    os_exit(1)
+}
+
+// -------------------------------------------------------------------------
+// Structured key-value logging
+// -------------------------------------------------------------------------
+
+/// Logs a message at INFO level with one named field.
+/// Example: log_field("request", "GET /api/users", "status", 200)
+fn log_field(msg, key1, val1) {
+    log_info(msg + " | " + str(key1) + "=" + str(val1))
+}
+
+/// Logs a message at INFO level with two named fields.
+fn log_fields2(msg, key1, val1, key2, val2) {
+    log_info(msg + " | " + str(key1) + "=" + str(val1) + " | " + str(key2) + "=" + str(val2))
+}
+
+/// Logs a message at INFO level with three named fields.
+fn log_fields3(msg, key1, val1, key2, val2, key3, val3) {
+    log_info(msg + " | " + str(key1) + "=" + str(val1) + " | " + str(key2) + "=" + str(val2) + " | " + str(key3) + "=" + str(val3))
+}
+
+// -------------------------------------------------------------------------
+// Indented scope / section helpers
+// -------------------------------------------------------------------------
+
+/// Increases the current log indentation level by 1.
+fn log_indent_push() {
+    _log_indent = _log_indent + 1
+}
+
+/// Decreases the current log indentation level by 1 (never below 0).
+fn log_indent_pop() {
+    if _log_indent > 0 {
+        _log_indent = _log_indent - 1
+    }
+}
+
+/// Logs the beginning of a named section (increments indent).
+fn log_section(name) {
+    log_info(">> " + name)
+    log_indent_push()
+}
+
+/// Ends a named section (decrements indent).
+fn log_section_end(name) {
+    log_indent_pop()
+    log_info("<< " + name)
+}
+
+// -------------------------------------------------------------------------
+// Assertion helpers
+// -------------------------------------------------------------------------
+
+/// Logs an ERROR and the expression string if cond is false.
+/// Does not terminate; use log_assert_fatal for hard stops.
+fn log_assert(cond, expr) {
+    if !cond {
+        log_error("Assertion failed: " + expr)
+    }
+}
+
+/// Logs a FATAL message and terminates if cond is false.
+fn log_assert_fatal(cond, expr) {
+    if !cond {
+        log_fatal("Assertion failed (fatal): " + expr)
+    }
+}
+
+// -------------------------------------------------------------------------
+// Benchmarking helpers (requires std.time)
+// -------------------------------------------------------------------------
+
+/// Records the current monotonic millisecond timestamp for benchmarking.
+/// Returns the timestamp value to pass to log_bench_end().
+fn log_bench_start(label) {
+    log_debug("BENCH start: " + label)
+    use std.time;
+    return time_monotonic_ms()
+}
+
+/// Logs the elapsed time in ms since log_bench_start().
+fn log_bench_end(label, start_ms) {
+    use std.time;
+    var end_ms = time_monotonic_ms()
+    var elapsed = end_ms - start_ms
+    log_debug("BENCH end:   " + label + " => " + str(elapsed) + " ms")
+}
+
+// -------------------------------------------------------------------------
+// Progress bar helper
+// -------------------------------------------------------------------------
+
+/// Prints a simple progress line: "label [####......] x/total"
+fn log_progress(label, current, total) {
+    if total <= 0 { return }
+    dec width = 30
+    var filled = int(float(current * width) / float(total))
+    var bar = ""
+    var i = 0
+    do {
+        if i < filled {
+            bar = bar + "#"
+        } else {
+            bar = bar + "."
+        }
+        i = i + 1
+    } til i >= width
+    print(_log_indent_prefix() + label + " [" + bar + "] " + str(current) + "/" + str(total))
+}

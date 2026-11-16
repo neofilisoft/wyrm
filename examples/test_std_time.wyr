@@ -1,4 +1,4 @@
-// test_std_time.wyr - Comprehensive test suite for std.time module in Wyrm v3.2.1
+// test_std_time.wyr - Comprehensive test suite for std.time module in Wyrm 1.0.0
 
 use std.time;
 
@@ -10,7 +10,7 @@ fn assert(condition, message) {
 }
 
 fn main() {
-    print("=== Testing std.time Module in Wyrm v3.2.1 ===")
+    print("=== Testing std.time Module in Wyrm 1.0.0 ===")
 
     // 1. Test Wall-Clock Timestamps
     var now_sec = time_now()

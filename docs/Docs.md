@@ -1,72 +1,91 @@
 # Wyrm Language Specification
 
-This document describes the Wyrm language design and architecture implemented in the repository. The canonical project version is stored in the [VERSION](file:///c:/Users/BEST/Desktop/wyrm/VERSION) file (currently **v3.2.1**).
+This document describes the Wyrm language design and architecture. The canonical project version is stored in the [VERSION](file:///c:/Users/BEST/Desktop/wyrm/VERSION) file (currently **1.2.0**).
 
 ---
 
 ## 1. Toolchain & Runtime
 
-- **`wyrmc`**: The primary self-hosted compiler and execution runner implemented in pure Wyrm ([compiler/wyrmc.wyr](file:///c:/Users/BEST/Desktop/wyrm/compiler/wyrmc.wyr)). Supports ahead-of-time native binary compilation (`wyrmc build file.wyr`) and instant runner mode (`wyrmc run file.wyr`).
-- **`wyrpkg`**: The project and package manager (Cargo-inspired workflow: `new`, `init`, `build`, `run`, `install`, `update`, `publish`, `remove`, `list`).
-- **AOT Codegen Path**: LLVM IR compilation directly to native machine binaries via Clang / LLVM toolchain.
-- **Stage 0 Bootstrap Toolchain**: Native C11 / C++20 toolchain built via [bootstrap.c](file:///c:/Users/BEST/Desktop/wyrm/wyrm/scr/bootstrap.c) to build Stage 0 and bootstrap the self-hosted compiler.
-- **Self-Hosting Verification**: `wyrmc` achieves Stage 2 self-compilation (`wyrmc_stage1.exe build compiler/wyrmc.wyr -o wyrmc.exe`).
+- **`wyrmc`**: The primary compiler and execution runner. Supports:
+  - `wyrmc build <file.wyr>` - Ahead-of-time native binary compilation via Transpiler to C11 or LLVM IR -> Clang.
+  - `wyrmc run <file.wyr>` - Instant interpreter mode (C++ tree-walking interpreter).
+  - `wyrmc test [dir]` - Discover and run all `test_*.wyr` files, report PASS/FAIL.
+  - `wyrmc check <file.wyr>` - Parse and lint only, no execution.
+  - `wyrmc fmt <file.wyr>` - Format source file in-place.
+  - `wyrmc clean [--all]` - Remove build artifacts and cached binaries.
+- **`wyrpkg`**: Project and package manager (Cargo-inspired): `new`, `init`, `build`, `run`, `install`, `add`, `lock`, `update`, `publish`, `remove`, `list`.
+- **AOT Codegen Path**: Transpiler -> C11 -> gcc, or LLVM IR -> Clang / LLVM.
+- **Self-Hosting**: `wyrmc` is self-hosted in pure Wyrm (`compiler/wyrmc.wyr`), achieving Stage 2 self-compilation.
+- **Stage 0 Bootstrap**: C11 / C++20 bootstrap (`wyrm/src/bootstrap.c`) used exclusively to bootstrap Stage 0.
 
 ---
 
 ## 2. Source Files & Lexical Rules
 
 - Source file extension: `.wyr`
-- Line comments start with `//`.
-- Block comments use `/*` and `*/`.
-- Documentation comments start with `///`.
-- Block delimiters use `{` and `}`.
-- Semicolons: **Optional** at most statement boundaries; **required** at the end of `use` statements (e.g. `use std.sdl;`).
-- Editor Support: VS Code syntax highlighting extension with TextMate grammar lives in [extension/](file:///c:/Users/BEST/Desktop/wyrm/extension).
+- Line comments: `//`
+- Block comments: `/* */`
+- Documentation comments: `///`
+- Block delimiters: `{ }`
+- Semicolons: **Optional** at most statement boundaries; **required** after `use` statements (e.g. `use std.time;`).
+- Editor support: VS Code syntax highlighting extension in [extension/](file:///c:/Users/BEST/Desktop/wyrm/extension).
 
 ---
 
-## 3. Values & Static Types (v3.2.1 Gradual / Hybrid Model)
+## 3. Values & Static Types (Gradual / Hybrid Model)
 
-Wyrm v3.2.0 provides **Gradual / Hybrid Static Typing** combining the ergonomics of dynamic scripting with C/Rust unboxed native CPU execution:
+Wyrm provides **Gradual / Hybrid Static Typing** combining unboxed native CPU execution for annotated code with a dynamic tagged union for unannotated code.
 
 ### Static Primitive Types
-When explicitly annotated, Wyrm generates unboxed LLVM IR instructions without value boxing overhead:
-- **`i32` / `int`**: Signed 32-bit integer (`alloca i32`, direct integer arithmetic `add i32`, `sub i32`, `mul i32`, `sdiv i32`, `srem i32`, `icmp`).
-- **`i64`**: Signed 64-bit integer (`alloca i64`, 64-bit integer operations `add i64`, `sub i64`, `mul i64`, `sdiv i64`, `srem i64`, `icmp`).
-- **`u8` / `byte`**: Unsigned 8-bit integer (`alloca i8`, byte operations and zero-extension conversions).
-- **`f32`**: Single-precision 32-bit IEEE-754 floating point (`alloca float`, native float instructions `fadd`, `fsub`, `fmul`, `fdiv`, `fcmp`).
-- **`f64` / `float`**: Double-precision 64-bit IEEE-754 floating point (`alloca double`, native double instructions `fadd`, `fsub`, `fmul`, `fdiv`, `fcmp`).
-- **`bool`**: 1-bit boolean register (`alloca i1`).
+
+When explicitly annotated, Wyrm generates unboxed LLVM IR without value boxing overhead:
+
+| Type | Alias | LLVM IR | Description |
+|---|---|---|---|
+| `i32` | `int` | `alloca i32` | Signed 32-bit integer |
+| `i64` | - | `alloca i64` | Signed 64-bit integer |
+| `u8` | `byte` | `alloca i8` | Unsigned 8-bit integer |
+| `f32` | - | `alloca float` | Single-precision 32-bit float |
+| `f64` | `float` | `alloca double` | Double-precision 64-bit float |
+| `bool` | - | `alloca i1` | Boolean (1-bit register) |
 
 ### Dynamic Tagged Union (`Value`)
-When variables are unannotated or bridged with dynamic calls, values use the reference-counted runtime union `Value`:
-- **`null`**: The empty / null value (`VAL_NULL`, [val_null](file:///c:/Users/BEST/Desktop/wyrm/wyrm/lib/wyrm_core.c#L14)).
-- **`bool`**: Boolean values `true` and `false` (`VAL_BOOL`).
-- **`number`**: Double-precision floating point number (`VAL_NUMBER`).
-- **`string`**: Dynamically allocated UTF-8 character string (`VAL_STRING`, `char *string;`).
-- **`array`**: Dynamic heap-allocated list (`VAL_ARRAY`, `ValArray *array;`).
-- **`struct`**: User-defined data structure (`VAL_STRUCT`, `WyrmStruct *structure;`) with named fields, methods, and deterministic reference counting.
-- **`raw_ptr`**: Raw pointer (`VAL_RAW_PTR`, `void *raw_ptr;`) for FFI handles, arena buffers, and native objects.
+
+Unannotated or bridge-mode values use the reference-counted runtime union:
+
+- `null` - Empty / null value (`VAL_NULL`).
+- `bool` - Boolean `true` / `false` (`VAL_BOOL`).
+- `number` - IEEE-754 64-bit double (`VAL_NUMBER`).
+- `string` - Heap-allocated UTF-8 string (`VAL_STRING`, `char*`).
+- `array` - Dynamic heap list (`VAL_ARRAY`, `ValArray*`).
+- `struct` - User-defined data structure with named fields and reference counting (`VAL_STRUCT`, `WyrmStruct*`).
+- `raw_ptr` - Raw native pointer (`VAL_RAW_PTR`, `void*`) for FFI handles and arena buffers.
+- `error` - Runtime error value (`VAL_ERROR`).
+- `weak_ref` - Non-owning weak reference to a struct (`VAL_WEAK_REF`).
 
 ---
 
 ## 4. Variables & Binding
 
-- **`var` (Mutable with Optional Static Typing)**:
+- **`var` (Mutable)**:
   ```wyrm
-  var score: i32 = 100       // Unboxed static i32 (direct CPU register arithmetic)
-  var name = "Wyrm"         // Dynamic type inference
+  var score: i32 = 100       // Unboxed static i32
+  var name = "Wyrm"          // Dynamic inference
   score = score + 50
   ```
-- **Implicit Assignment**: If a variable has not been declared with `var`, assigning to an identifier declares it in the local scope or updates an existing outer variable:
+- **Implicit Assignment**: Assigning to an undeclared identifier declares it in local scope or updates an outer binding:
   ```wyrm
   x = 10
   ```
-- **`dec` (Immutable)**: Declares a constant binding that cannot be reassigned:
+- **`dec` (Immutable constant)**:
   ```wyrm
-  dec PI = 3.1415926535
+  dec PI = 3.14159265358979
   ```
+- **`owned` (Ownership declaration)**:
+  ```wyrm
+  owned res: Resource = Resource(id, tag)
+  ```
+  An `owned` binding transfers heap resources out of scope when returned or moved. The environment marks the slot as moved and skips drop on exit.
 
 ---
 
@@ -74,13 +93,11 @@ When variables are unannotated or bridged with dynamic calls, values use the ref
 
 - **Arithmetic**: `+`, `-`, `*`, `/`, `%`, `//` (floor division), `**` (power)
 - **Comparison**: `==`, `!=`, `<`, `>`, `<=`, `>=`
-- **Logical**: `&&`, `||`, `!` (along with keyword aliases `and`, `or`, `not`)
+- **Logical**: `&&`, `||`, `!` (aliases: `and`, `or`, `not`)
 
 ---
 
 ## 6. Functions & Entry Point
-
-Functions are declared with the `fn` keyword. Functions can include optional static parameter types and return types (`: Type` or `-> Type`). The `fn main()` function serves as the program entry point and is automatically executed on startup:
 
 ```wyrm
 fn add(a: i32, b: i32): i32 {
@@ -93,14 +110,50 @@ fn main() {
 }
 ```
 
-Recursion depth is protected by a call-stack guard ([MAX_CALL_DEPTH](file:///c:/Users/BEST/Desktop/wyrm/compiler/interpreter/interpreter.hpp#L65) = 500) to prevent stack overflows.
+- Optional type annotations: `: Type` or `-> Type` for return types.
+- `fn main()` is the program entry point, called automatically.
+- Recursion depth guard: [MAX_CALL_DEPTH](file:///c:/Users/BEST/Desktop/wyrm/compiler/interpreter/interpreter.hpp#L65) = 500.
+
+### Generic Functions (1.2.0)
+
+Type parameters are erased at runtime (all map to `Value`). Syntax:
+```wyrm
+fn swap<T>(a: T, b: T) {
+    var tmp = a
+    a = b
+    b = tmp
+}
+```
+
+### Async Functions (1.2.0)
+
+`async fn` marks a function as asynchronous. `await` evaluates the expression immediately in the current sequential execution model:
+```wyrm
+async fn fetch_data(url) {
+    var result = await http_get(url)
+    return result
+}
+```
+
+### Closures / Lambda (1.2.0)
+
+Anonymous functions are first-class values:
+```wyrm
+var double = fn(x) { return x * 2 }
+var nums = [1, 2, 3, 4]
+var i = 0
+do {
+    print(double(nums[i]))
+    i = i + 1
+} til i >= len(nums)
+```
 
 ---
 
 ## 7. Control Flow
 
 ### Conditional Statements
-Uses `if`, `elif`, and `else` with `{}` block syntax:
+
 ```wyrm
 if x > 10 {
     print("high")
@@ -112,7 +165,7 @@ if x > 10 {
 ```
 
 ### Loops
-The primary loop structure is **`do { ... } til <condition>`** (with `repeat { ... } til` accepted as an alias). The loop body executes repeatedly until the `<condition>` becomes `true`:
+
 ```wyrm
 var i = 0
 do {
@@ -120,15 +173,13 @@ do {
     i = i + 1
 } til i >= 5
 ```
-Loops support `break` and `continue` statements.
+
+`break` and `continue` are supported inside `do...til` loops.
 
 ---
 
 ## 8. Structs & Methods
 
-Wyrm provides systems-style data structures with named fields, methods, and automatic memory lifecycle management:
-
-### Struct Definition & Method Declarations
 ```wyrm
 struct Point {
     x: i32,
@@ -143,164 +194,255 @@ struct Point {
         self.y = self.y + dy
     }
 }
+
+var p = Point(3, 4)
+p.translate(10, 20)
+print(p.distance_sq())   // 745
 ```
 
-### Instantiation, Field Access & Mutation
-- **Construction**: Call the struct name like a function: `var p = Point(10, 20)`
-- **Member Access**: Read fields with dot syntax: `p.x`, `p.y`
-- **Member Mutation**: Modify fields in place: `p.x = 30`
-- **Method Calls**: Invoke methods using `obj.method(args...)`. The receiver object is automatically passed as `self`.
-- **In-Place Self Mutation**: Methods modifying `self.field = value` mutate the struct instance in place.
+### Generic Structs (1.2.0)
+
+```wyrm
+struct Box<T> {
+    value: T,
+}
+var b = Box(42)
+```
 
 ### Memory & Lifecycle
-Structs are managed via deterministic reference counting in [WyrmStruct](file:///c:/Users/BEST/Desktop/wyrm/wyrm/lib/wyrm_core.h). Passing a struct into a method or binding to a variable increments its reference count; scope exit decrements it. When the count reaches zero, all fields and heap-allocated resources are released recursively via [val_drop](file:///c:/Users/BEST/Desktop/wyrm/wyrm/lib/wyrm_core.c).
+
+`WyrmStruct` instances are managed by deterministic reference counting (`ref_count`). When `ref_count <= 0` all fields are dropped recursively via [val_drop](file:///c:/Users/BEST/Desktop/wyrm/wyrm/lib/wyrm_core.c).
 
 ---
 
-## 9. Data Structures & Subscripting
+## 9. Enums & Pattern Matching (1.2.0)
 
-- **Array Literals**: `var list = [10, 20, 30]`
-- **Numeric Indexing**: `list[0]` (0-indexed, supports negative indices like `list[-1]`)
-- **Multi-Dimensional Index Assignment**: `grid[x][y] = value`
-- **Array Slicing**: `list[1:3]` (returns an independent deep-copy slice)
-- **Dictionary / Map Subscripting**: JSON objects and HashMaps support string key subscripting:
-  ```wyrm
-  var item = json_parse("{\"title\": \"Game\"}")
-  print(item["title"])
-  item["title"] = "Updated Game"
-  ```
+### Enum Definition
+
+```wyrm
+enum Color {
+    Red,
+    Green,
+    Blue,
+}
+
+enum Shape {
+    Circle(radius),
+    Rect(width, height),
+    Point,
+}
+```
+
+### Match Statement
+
+```wyrm
+var s = Shape.Rect(10, 5)
+match s {
+    case Circle(r) -> print("Circle, radius:", r)
+    case Rect(w, h) -> print("Area:", w * h)
+    case Point -> print("A point")
+    default -> print("Unknown")
+}
+```
 
 ---
 
-## 10. Memory Management (Deterministic Reference Counting, RAII Drop Glue & Arena Allocators)
+## 10. Error Handling (1.2.0)
 
-Wyrm employs a **Deterministic Dynamic Value Runtime with RAII Drop Glue and Scoped Arena Allocators**:
+### try / catch / throw
 
-1. **Deterministic Drop Glue ([val_drop](file:///c:/Users/BEST/Desktop/wyrm/wyrm/lib/wyrm_core.c#L525))**:
-   - Scope-bound RAII cleans up heap-allocated strings, arrays, and reference-counted structs when variables exit scope in [Environment](file:///c:/Users/BEST/Desktop/wyrm/compiler/interpreter/environment.hpp#L32).
-   - Reassigning variables or overwriting array elements automatically drops the previous value to prevent memory leaks.
-2. **Reference Counting for Structs**:
-   - `WyrmStruct` instances track active references (`ref_count`). Passing a struct as `self` or copying a reference increments the count; exiting a scope decrements it. When `ref_count <= 0`, all inner fields are dropped recursively and the struct header is freed.
-3. **Deep Copy ([val_copy](file:///c:/Users/BEST/Desktop/wyrm/wyrm/lib/wyrm_core.c#L554))**:
-   - Explicit independent cloning for string and array data, or reference count increments for structs.
-4. **Arena Allocation ([WyrmArena](file:///c:/Users/BEST/Desktop/wyrm/wyrm/lib/wyrm_arena.h#L7))**:
-   - High-throughput region memory allocation released all at once via [arena_destroy](file:///c:/Users/BEST/Desktop/wyrm/wyrm/lib/wyrm_arena.c#L47) or reset via [arena_reset](file:///c:/Users/BEST/Desktop/wyrm/wyrm/lib/wyrm_arena.c#L41):
+```wyrm
+fn read_config(path) {
+    if !fs_exists(path) {
+        throw "Config file not found: " + path
+    }
+    return fs_read(path)
+}
+
+fn main() {
+    try {
+        var cfg = read_config("config.yaml")
+        print("Loaded:", cfg)
+    } catch e {
+        print("Error:", e)
+    }
+}
+```
+
+### Result Type Helpers
+
+The C runtime provides `val_ok`, `val_err`, `val_is_ok`, `val_is_err`, and `val_unwrap` for explicit Result-style error propagation from C stdlib functions.
+
+---
+
+## 11. Memory Management
+
+Wyrm employs **Deterministic Drop Glue + Scoped Arena Allocators + Ownership Move Semantics**:
+
+1. **RAII Drop Glue ([val_drop](file:///c:/Users/BEST/Desktop/wyrm/wyrm/lib/wyrm_core.c))**: Heap strings, arrays, and reference-counted structs are freed when variables exit scope via the [Environment](file:///c:/Users/BEST/Desktop/wyrm/compiler/interpreter/environment.hpp) destructor. Reassignments drop old values immediately.
+
+2. **Reference Counting for Structs**: `WyrmStruct` tracks `ref_count`. Copies via [val_copy](file:///c:/Users/BEST/Desktop/wyrm/wyrm/lib/wyrm_core.c) increment it; scope exit decrements. At zero, inner fields are dropped recursively and the struct header freed.
+
+3. **Ownership (`owned`) & Move Semantics (1.1.0+)**:
    ```wyrm
-   arena buf(1024)
-   var p = buf.alloc(64)
-   buf.reset()
+   owned res: Resource = create_resource(1, "primary")
    ```
-5. **Scoped Ownership Drop Glue**:
-   - Blocks and loops automatically release scoped bindings and child struct instances when control flow exits the scope.
-6. **Unsafe Blocks**:
-   - Low-level manual memory allocation using `malloc`, `realloc`, and `free` is guarded within `unsafe { ... }` blocks:
+   - Returning an `owned` variable calls `mark_moved` in the Environment, transferring the heap resources to the caller without double-free.
+   - The slot is nulled and flagged `is_moved`; the destructor skips it.
+
+4. **Arena Allocators ([WyrmArena](file:///c:/Users/BEST/Desktop/wyrm/wyrm/lib/wyrm_arena.h))**:
+   ```wyrm
+   arena buf(4096)
+   var p = buf.alloc(64)
+   buf.reset()              // reclaim all at once
+   ```
+
+5. **Unsafe Blocks**:
    ```wyrm
    unsafe {
        var p = malloc(64)
+       // pointer arithmetic
        free(p)
    }
    ```
 
+6. **Weak References**:
+   ```wyrm
+   var weak = weak_ref(strong_struct)
+   var locked = lock(weak)    // returns null if target was freed
+   ```
+
 ---
 
-## 11. Standard Library Modules (v3.2.1)
+## 12. Data Structures & Subscripting
 
-Imported via `use std.<module>;`:
+- **Array Literals**: `var list = [10, 20, 30]`
+- **Indexing**: `list[0]`, negative indices `list[-1]`.
+- **Slicing**: `list[start:end]` - half-open, returns a deep copy.
+- **Dictionary / JSON subscripting**: `obj["key"]`, `obj["key"] = value`.
+- **Built-in array/string operations**: `join`, `split`, `len`, `append`, `pop`.
 
-### `std.time` - High-Resolution Timers & Formatting
-High-precision monotonic clock (Windows QPC / POSIX CLOCK_MONOTONIC), Unix epoch wall-clock timestamps, millisecond thread sleep, and date/time formatting:
+---
+
+## 13. Standard Library Modules (Dual-Aliasing)
+
+Use with `use <alias>;` or `use std.<name>;`.
+
+### `std.os` - Operating System (1.2.0)
+
+```wyrm
+use std.os;
+
+fn main() {
+    var args = os_args()
+    var home = os_env("HOME")
+    os_setenv("APP_ENV", "production")
+    var cwd = os_cwd()
+    os_chdir("/tmp")
+    var platform = os_platform()    // "windows", "linux", or "macos"
+    var sep = os_sep()              // "\" or "/"
+    var env_map = os_environ()
+    os_exec("echo hello")
+    os_exit(0)
+}
+```
+
+### `std.fs` - File System (1.2.0)
+
+```wyrm
+use std.fs;
+
+fn main() {
+    var content = fs_read("data.txt")
+    fs_write("out.txt", "Hello, Wyrm!")
+    fs_append("log.txt", "line\n")
+    var exists = fs_exists("config.yaml")
+    fs_delete("temp.tmp")
+    fs_mkdir("build/output")
+    var entries = fs_readdir("src/")
+    var info = fs_stat("main.wyr")     // struct: size, is_dir, mtime
+}
+```
+
+### `std.path` - Path Utilities (1.2.0)
+
+```wyrm
+use std.path;
+
+fn main() {
+    var full = path_join("src", "main.wyr")
+    var base = path_basename("/usr/lib/libwyrm.so")   // "libwyrm.so"
+    var dir  = path_dirname("/usr/lib/libwyrm.so")    // "/usr/lib"
+    var ext  = path_ext("report.md")                   // ".md"
+    var abs  = path_abs("../config.yaml")
+    var is_abs = path_is_abs("/usr/bin")               // true
+}
+```
+
+### `std.io` - I/O Streams (1.2.0)
+
+```wyrm
+use std.io;
+
+fn main() {
+    var line = io_readline()          // read from stdin
+    io_write("Enter name: ")
+    io_flush()
+    io_stderr("Fatal: bad input\n")
+}
+```
+
+### `std.http` - HTTP Client (1.2.0)
+
+```wyrm
+use std.http;
+
+fn main() {
+    var res = http_get("https://api.example.com/data")
+    print(res["status"])     // 200
+    print(res["body"])
+
+    var headers = http_headers(["Authorization: Bearer token"])
+    var post = http_post("https://api.example.com/create",
+                         "{\"name\": \"wyrm\"}", headers)
+    print(post["status"])
+}
+```
+
+### `std.time` - Timers & Formatting
+
 ```wyrm
 use std.time;
 
 fn main() {
-    // 1. Wall-Clock Timestamps
-    var now_sec = time_now()       // Floating-point seconds (sub-microsecond precision)
-    var unix_sec = time_unix()     // Integer seconds since Unix epoch
-    var unix_ms = time_unix_ms()   // Integer milliseconds
-
-    // 2. High-Resolution Monotonic Timers (Benchmark / Delta time)
+    var now_sec  = time_now()
+    var unix_sec = time_unix()
+    var unix_ms  = time_unix_ms()
     var t0 = time_monotonic_ms()
-    time_sleep(25)                 // Sleep current thread for 25 milliseconds
-    var t1 = time_monotonic_ms()
-    var elapsed = time_diff(t0, t1)
-    print("Elapsed: " + str(elapsed) + " ms")
-
-    // 3. Date & Time String Formatting
-    var utc_date = time_format(unix_sec, "%Y-%m-%d")
-    var local_dt = time_format_local(unix_sec, "%Y-%m-%d %H:%M:%S")
-    print("UTC: " + utc_date + " | Local: " + local_dt)
+    time_sleep(25)
+    var elapsed = time_diff(t0, time_monotonic_ms())
+    var utc  = time_format(unix_sec, "%Y-%m-%d")
+    var local = time_format_local(unix_sec, "%Y-%m-%d %H:%M:%S")
 }
 ```
 
 ### `std.random` - Random Number Generation
-Three-tier random generation covering PRNG (Xoshiro256**), CSPRNG (OS Cryptographic API), and TRNG (CPU Hardware RDRAND with OS entropy fallback):
+
 ```wyrm
 use std.random;
 
 fn main() {
-    // PRNG (Deterministic with seed, high performance)
     rand_seed(12345)
-    var roll = rand_int(1, 20)
-    var chance = rand()
-    var item = rand_choice(["sword", "shield", "potion"])
-    var deck = rand_shuffle([1, 2, 3, 4, 5])
-
-    // CSPRNG (Cryptographically Secure)
-    var sec_float = rand_secure()
-    var sec_pin = rand_secure_int(1000, 9999)
-    var token_hex = rand_bytes_hex(32)
-
-    // TRNG (Hardware CPU instruction RDRAND / OS entropy fallback)
-    var has_hw = rand_has_trng()
-    var hw_val = rand_trng()
-    var hw_int = rand_trng_int(1, 100)
-    rand_reseed_trng()
+    var roll   = rand_int(1, 20)
+    var item   = rand_choice(["sword", "shield", "potion"])
+    var deck   = rand_shuffle([1, 2, 3, 4, 5])
+    var token  = rand_bytes_hex(32)    // CSPRNG
+    var hw_val = rand_trng()           // TRNG / RDRAND
 }
 ```
 
-### `std.sdl` - Windowing & Game Event Loop
-Hardware-accelerated 2D graphics, windowing, and input handling powered by dynamic SDL2 runtime binding:
-```wyrm
-use std.sdl;
+### `std.json` - JSON
 
-fn main() {
-    sdl_init()
-    var win = sdl_window("Wyrm Game", 800, 600)
-    var running = true
-
-    do {
-        var ev = sdl_poll_event()
-        if ev["type"] == SDL_QUIT {
-            running = false
-        }
-        if ev["type"] == SDL_KEYDOWN {
-            print("Key pressed:", ev["key"])
-        }
-
-        sdl_clear(win, 0, 0, 0)
-        sdl_present(win)
-        sdl_delay(16)
-    } til running == false
-
-    sdl_quit()
-}
-```
-
-### `std.ffi` - Foreign Function Interface
-Load native shared libraries (`.dll`, `.so`, `.dylib`) dynamically:
-```wyrm
-use std.ffi;
-
-fn main() {
-    var lib = ffi_open("my_native_lib.dll")
-    var fn_sym = ffi_sym(lib, "calculate")
-    var res = ffi_call(fn_sym, [10, 20])
-    ffi_close(lib)
-}
-```
-
-### `std.json` - JSON Serialization
-RFC 8259 compliant single-pass parser and encoder:
 ```wyrm
 use std.json;
 
@@ -312,8 +454,8 @@ fn main() {
 }
 ```
 
-### `std.yaml` - YAML Serialization
-Block-style YAML parser supporting scalars, sequences, and mappings:
+### `std.yaml` - YAML
+
 ```wyrm
 use std.yaml;
 
@@ -323,8 +465,42 @@ fn main() {
 }
 ```
 
-### `std.thread` - Multithreading & Synchronization
-Spawns isolated OS-level worker threads with mutex primitives:
+### `std.collections` - HashMap & Set
+
+```wyrm
+use std.collections;
+
+fn main() {
+    var m = map_new()
+    map_set(m, "player", "WyrmMaster")
+    print(map_get(m, "player"))
+    print(map_has(m, "player"))
+    print(map_len(m))
+    var keys = map_keys(m)
+    map_delete(m, "player")
+
+    var s = set_new()
+    set_add(s, "item")
+    print(set_has(s, "item"))
+    var u = set_union(s, s)
+}
+```
+
+### `std.ffi` - Foreign Function Interface
+
+```wyrm
+use std.ffi;
+
+fn main() {
+    var lib = ffi_open("my_native_lib.dll")
+    var fn_sym = ffi_sym(lib, "calculate")
+    var res = ffi_call(fn_sym, [10, 20])
+    ffi_close(lib)
+}
+```
+
+### `std.thread` - OS Threads
+
 ```wyrm
 use std.thread;
 
@@ -335,84 +511,149 @@ fn worker(id) {
 fn main() {
     var t = thread_spawn(worker, [1])
     thread_join(t)
-
     var m = mutex_new()
     mutex_lock(m)
-    // critical section
     mutex_unlock(m)
     mutex_destroy(m)
 }
 ```
 
-### `std.collections` - High-Performance Collections
-Open-addressing FNV-1a HashMaps and Set collections:
+---
+
+## 14. Pure Wyrm Packages (`library/std/`)
+
+Imported with a relative path: `use library.std.math;`
+
+### `std.math`
+
+Mathematical constants and functions written entirely in Wyrm:
+
 ```wyrm
-use std.collections;
+use library.std.math;
 
 fn main() {
-    var m = map_new()
-    map_set(m, "player", "WyrmMaster")
-    print(m["player"])
-    print(map_len(m))
+    print(MATH_PI)
+    print(math_sqrt(2.0))
+    print(math_sin(math_radians(90.0)))
+    print(math_log10(1000.0))
+    print(math_clamp(1.5, 0.0, 1.0))
+    print(math_lerp(0.0, 100.0, 0.25))
+    print(math_is_prime(97.0))
+    var stats = [10.0, 20.0, 30.0, 40.0]
+    print(math_mean(stats))
+    print(math_gcd(48.0, 18.0))
 }
 ```
 
+**Available functions**: `math_floor`, `math_ceil`, `math_round`, `math_trunc`, `math_abs`, `math_sign`, `math_pow`, `math_sqrt`, `math_cbrt`, `math_log`, `math_log10`, `math_log2`, `math_exp`, `math_sin`, `math_cos`, `math_tan`, `math_sinh`, `math_cosh`, `math_tanh`, `math_radians`, `math_degrees`, `math_min`, `math_max`, `math_clamp`, `math_lerp`, `math_normalize`, `math_remap`, `math_fmod`, `math_divmod`, `math_gcd`, `math_lcm`, `math_is_prime`, `math_sum`, `math_mean`, `math_array_min`, `math_array_max`, `math_approx_eq`.
+
+**Constants**: `MATH_PI`, `MATH_TAU`, `MATH_E`, `MATH_LN2`, `MATH_LN10`, `MATH_INF`.
+
+### `std.string`
+
+String inspection, transformation, formatting, and builder utilities:
+
+```wyrm
+use library.std.string;
+
+fn main() {
+    print(str_pad_left("42", 6, "0"))      // "000042"
+    print(str_capitalize("hello world"))    // "Hello world"
+    print(str_title("the quick fox"))       // "The Quick Fox"
+    print(str_repeat("ab", 3))             // "ababab"
+    print(str_index_of("hello", "ll"))     // 2
+    print(str_count("abcabc", "bc"))       // 2
+
+    var b = str_builder_new()
+    b = str_builder_push(b, "Hello, ")
+    b = str_builder_pushln(b, "Wyrm!")
+    print(str_builder_build(b))
+
+    var lines = str_split_lines("line1\nline2\nline3")
+    print(len(lines))                      // 3
+}
+```
+
+**Available functions**: `str_len`, `str_empty`, `str_starts_with`, `str_ends_with`, `str_contains`, `str_char_at`, `str_ord`, `str_chr`, `str_to_bytes`, `str_from_bytes`, `str_upper`, `str_lower`, `str_capitalize`, `str_title`, `str_trim`, `str_trim_left`, `str_trim_right`, `str_pad_left`, `str_pad_right`, `str_pad_center`, `str_slice`, `str_take`, `str_drop`, `str_split`, `str_chars`, `str_split_lines`, `str_join`, `str_replace`, `str_index_of`, `str_last_index_of`, `str_count`, `str_from`, `str_to_number`, `str_is_integer`, `str_is_number`, `str_repeat`, `str_fill`, `str_builder_new`, `str_builder_push`, `str_builder_pushln`, `str_builder_build`, `str_builder_len`.
+
+### `std.log`
+
+Structured, leveled logging with optional timestamps and ANSI color output:
+
+```wyrm
+use library.std.log;
+
+fn main() {
+    log_init("MyApp", LOG_LEVEL_DEBUG)
+    log_set_timestamps(true)
+    log_set_color(true)
+
+    log_debug("Parsing configuration...")
+    log_info("Server started on port 8080")
+    log_warn("High memory usage detected")
+    log_error("Failed to connect to database")
+
+    log_field("Request", "method", "GET")
+    log_fields2("Response", "status", 200, "size", 4096)
+
+    log_section("Database")
+    log_info("Running migration v3")
+    log_section_end("Database")
+
+    var t0 = log_bench_start("heavy computation")
+    // ... work ...
+    log_bench_end("heavy computation", t0)
+
+    log_progress("Uploading", 75, 100)
+}
+```
+
+**Log levels**: `LOG_LEVEL_DEBUG` (0), `LOG_LEVEL_INFO` (1), `LOG_LEVEL_WARN` (2), `LOG_LEVEL_ERROR` (3), `LOG_LEVEL_FATAL` (4), `LOG_LEVEL_OFF` (5).
+
+**Fatal logging terminates the process** via `os_exit(1)`.
+
 ---
 
-## 12. Built-in Core Functions
+## 15. Built-in Core Functions
 
-Wyrm provides the following core built-in operations:
-
-- `print(...)`: Prints arguments separated by space to stdout.
-- `input(prompt)`: Reads a line of input from stdin.
-- `len(obj)`: Returns the length of an array or string.
-- `append(arr, item)`: Appends an item to a dynamic array.
-- `pop(arr)`: Removes and returns the last element of an array.
-- `int(v)` / `float(v)`: Robust numerical conversion via `strtod`.
-- `str(v)`: String conversion.
-- `split(s, sep)` / `join(sep, arr)`: String splitting and joining.
-- `trim(s)` / `upper(s)` / `lower(s)`: String formatting.
-- `contains(s, sub)` / `replace(s, old, new)`: Substring searching and replacement.
-- `starts_with(s, prefix)` / `ends_with(s, suffix)`: Affix matching.
-- `char_at(s, idx)`: Character extraction.
-- `ord_val(c)` / `chr_val(n)`: Character code conversions.
-- `to_bytes(s)` / `from_bytes(arr)`: Byte array conversions.
-- `read_file(path)` / `write_file(path, content)`: Safe file I/O.
+| Function | Description |
+|---|---|
+| `print(...)` | Print arguments separated by space to stdout |
+| `input(prompt)` | Read a line from stdin |
+| `len(obj)` | Length of array or string |
+| `append(arr, item)` | Append item to dynamic array |
+| `pop(arr)` | Remove and return last array element |
+| `int(v)` / `float(v)` | Numeric conversion via `strtod` |
+| `str(v)` | String conversion |
+| `split(s, sep)` / `join(sep, arr)` | String split and join |
+| `trim(s)` / `upper(s)` / `lower(s)` | String formatting |
+| `contains(s, sub)` / `replace(s, old, new)` | Substring operations |
+| `starts_with(s, p)` / `ends_with(s, s)` | Affix matching |
+| `char_at(s, i)` | Character extraction |
+| `ord_val(c)` / `chr_val(n)` | Character code conversions |
+| `to_bytes(s)` / `from_bytes(arr)` | UTF-8 byte array conversions |
+| `read_file(path)` / `write_file(path, content)` | Legacy file I/O |
 
 ---
 
-## 13. Package Manager & Public Registry (`wyrpkg`)
-
-`wyrpkg` manages Wyrm projects and supports a distributed, Git-based Public Package Registry:
+## 16. Package Manager (`wyrpkg`)
 
 ```bash
-# Create or initialize projects (generates wyrpkg.toml)
 wyrpkg new my_game
 wyrpkg init
-
-# Build or run
 wyrpkg build
 wyrpkg run
-
-# Install packages from Public Registry (GitHub, Git remote, or local directory)
 wyrpkg install owner/repo
-wyrpkg install https://github.com/owner/repo.git
 wyrpkg install ./local_library
-
-# Update installed Git packages
+wyrpkg add std_time@1.2.0
+wyrpkg lock
 wyrpkg update repo
-
-# Validate and publish release instructions
 wyrpkg publish
-
-# List and remove packages
 wyrpkg list
 wyrpkg remove repo
 ```
 
-### Manifest Format (`wyrpkg.toml`)
-
-Projects created with `wyrpkg new` or `wyrpkg init` use `wyrpkg.toml` located at the project root:
+### Manifest (`wyrpkg.toml`)
 
 ```toml
 [package]
@@ -421,46 +662,43 @@ version = "0.1.0"
 entry = "main.wyr"
 
 [dependencies]
-# std_time = "3.2.1"
+# std_time = "1.2.0"
 ```
 
 ---
 
-## 14. Native Bootstrap Build & Installation
+## 17. Native Bootstrap & Installation
 
-To build and install the Wyrm toolchain across platforms:
+### Linux & macOS
 
-### Linux & macOS (Bash)
 ```bash
 chmod +x install.sh
 ./install.sh
 ```
 
-### Windows (PowerShell)
+### Windows
+
 ```powershell
 powershell -File install.ps1
 ```
 
-### Windows C11 Self-Contained Bootstrap Driver
+### Self-Contained Bootstrap
+
 ```bash
-gcc wyrm/scr/bootstrap.c -o bootstrap.exe -std=c11 -O2
+gcc wyrm/src/bootstrap.c -o bootstrap.exe -std=c11 -O2
 ./bootstrap.exe
 ```
 
-This compiles `wyrmc` and `wyrpkg`, deploys the standard library packages, and configures user environment paths automatically.
+Compiles `wyrmc` and `wyrpkg`, deploys the C runtime library packages, and configures user `PATH` automatically.
 
 ---
 
-## 15. Compiler Visual Diagnostics (v3.2.0)
+## 18. Compiler Diagnostics
 
-Wyrm v3.2.0 features compiler diagnostics styled after Rust and Clang, providing source code context, column markers, and standard error classification codes:
-
-### Visual Error Formatting
-When a syntax, semantic, or lexical error is encountered, `wyrmc` highlights the exact offending code line and column:
+Wyrm diagnostics are styled after Rust and Clang, providing source context, column markers, and error classification codes:
 
 ```text
-error[E0002]: syntax error: unexpected token NEWLINE '
-'
+error[E0002]: syntax error: unexpected token NEWLINE
   --> examples/test_diagnostics_demo.wyr:3:21
    |
  3 |     var result = a +
@@ -468,9 +706,12 @@ error[E0002]: syntax error: unexpected token NEWLINE '
    |
 ```
 
-### Diagnostic Error Classification Codes
-- **`E0001`**: Lexical analysis error (unrecognized characters, unterminated string or comment literals)
-- **`E0002`**: Parser syntax error (unexpected tokens, missing delimiters, malformed statements)
-- **`E0003`**: Semantic analysis error (type mismatches, undeclared identifiers, invalid assignments)
-- **`E0004`**: Codegen and backend compilation failure (native linking issues, unsupported target flags)
+### Error Codes
 
+| Code | Category |
+|---|---|
+| `E0001` | Lexical error (unrecognized characters, unterminated strings/comments) |
+| `E0002` | Parser syntax error (unexpected tokens, missing delimiters) |
+| `E0003` | Semantic error (type mismatches, undeclared identifiers) |
+| `E0004` | Codegen / backend failure (linking errors, unsupported target flags) |
+| `E0010` | Deprecated / removed syntax (e.g. legacy `repeat` loop keyword) |

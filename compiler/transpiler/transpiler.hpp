@@ -13,6 +13,7 @@ namespace wyrm {
 struct TranspilerScope {
     std::vector<std::string> arenas;
     std::vector<std::string> allocations;
+    std::vector<std::string> owned_values;
 };
 
 class Transpiler : public ASTVisitor {

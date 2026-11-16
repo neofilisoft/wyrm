@@ -10,8 +10,8 @@ This document contains everything needed to submit the **Wyrm** programming lang
 - **Primary Extension**: `.wyr`
 - **Color**: `#6f3799` (Royal Wyrm Purple)
 - **Type**: `programming`
-- **TextMate Scope**: `source.wyrm`
-- **Grammar Location**: [https://github.com/neofilisoft/wyrm/tree/master/extension](https://github.com/neofilisoft/wyrm/tree/master/extension) (or dedicated repository)
+- **TextMate Scope**: `source.wyr` (matches the scopeName shipped in the VSCode extension grammar - do not change one without the other)
+- **Grammar Location**: https://github.com/neofilisoft/wyrm/tree/master/extension/syntaxes/wyrm.tmLanguage.json
 - **Grammar License**: MIT License
 - **Sample Files License**: MIT License (written specifically for Wyrm and Linguist inclusion)
 
@@ -27,20 +27,18 @@ Wyrm:
   color: "#6f3799"
   extensions:
     - ".wyr"
-  tm_scope: source.wyrm
+  tm_scope: source.wyr
   ace_mode: text
   codemirror_mode: clike
   codemirror_mime_type: text/x-wyrm
-  language_id: 87463920
+  language_id: <RUN script/update-ids TO GENERATE - see step 4>
 ```
 
-*(Note: Run `script/update-ids` inside your cloned Linguist fork to verify the language ID)*
+**Before opening the PR**: clone your Linguist fork, add this entry with a placeholder ID, then run `script/update-ids` from the repo root. It rewrites the `language_id` to the next free, non-colliding value automatically. Never hand-pick or guess this number - a collision will fail CI and can silently corrupt another language's stats if merged.
 
 ---
 
 ## 3. Pull Request Title & Body Template
-
-Use the exact text below when opening the Pull Request on [github-linguist/linguist](https://github.com/github-linguist/linguist/pulls):
 
 ### PR Title:
 ```text
@@ -62,12 +60,14 @@ This pull request adds language detection and syntax highlighting support for **
 - [x] Samples are covered by the MIT License
 - [x] Ran `bundle exec rake test` to ensure all tests pass cleanly
 
-### Search Query & Evidence of Usage
-Search query demonstrating public `.wyr` usage across repositories on GitHub:
-- `path:*.wyr` / `extension:wyr`
-
-### Sample File Licenses
-The sample files in `samples/Wyrm/` are provided under the MIT License by the Wyrm language project.
+### Evidence of Usage
+<!--
+Fill this in honestly with what actually exists at submission time e.g. a list of
+public, non-fork repositories using .wyr, or an explanation that Wyrm is a new
+language and this submission is the reference implementation's own usage.
+Linguist maintainers weigh new-language submissions against adoption; do not
+inflate this section with search queries that don't yet return real results.
+-->
 ```
 
 ---
@@ -75,20 +75,28 @@ The sample files in `samples/Wyrm/` are provided under the MIT License by the Wy
 ## 4. Step-by-Step Instructions to Submit
 
 1. **Fork Linguist**:
-   Visit [https://github.com/github-linguist/linguist](https://github.com/github-linguist/linguist) and click **Fork**.
+   Visit https://github.com/github-linguist/linguist and click **Fork**.
 
 2. **Add Files to Fork**:
-   - Paste the YAML snippet into `lib/linguist/languages.yml`
+   - Paste the YAML snippet into `lib/linguist/languages.yml` (with placeholder `language_id`)
    - Copy `tools/linguist/samples/Wyrm/` to `samples/Wyrm/`
-   - Import the TextMate grammar:
+   - Import the TextMate grammar as a proper vendored grammar submodule:
      ```bash
      bundle exec script/add-grammar https://github.com/neofilisoft/wyrm
      ```
+     This also adds the required entry to `vendor/README.md`.
 
-3. **Run Tests**:
+3. **Generate a real language ID**:
+   ```bash
+   script/update-ids
+   ```
+   Commit the resulting change to `languages.yml`.
+
+4. **Run Tests**:
    ```bash
    bundle exec rake test
    ```
+   Fix any classifier ambiguity failures - this is expected the first time and usually means more/varied samples are needed (see `samples/Wyrm/`).
 
-4. **Submit Pull Request**:
-   Open a PR using the title and description template above.
+5. **Submit Pull Request**:
+   Open a PR using the title and description template above, with the Evidence of Usage section filled in truthfully.

@@ -75,7 +75,7 @@ fn tokenize(source) {
                     } til not is_alphanum(c) or pos >= len_src
                     
                     var type = "IDENTIFIER"
-                    if val == "use" or val == "fn" or val == "var" or val == "dec" or val == "owned" or val == "arena" or val == "if" or val == "elif" or val == "else" or val == "repeat" or val == "do" or val == "til" or val == "struct" or val == "unsafe" or val == "return" or val == "break" or val == "continue" or val == "print" or val == "and" or val == "or" or val == "not" or val == "true" or val == "false" or val == "null" or val == "try" or val == "catch" or val == "weak" {
+                    if val == "use" or val == "fn" or val == "var" or val == "dec" or val == "owned" or val == "arena" or val == "if" or val == "elif" or val == "else" or val == "repeat" or val == "do" or val == "til" or val == "struct" or val == "enum" or val == "match" or val == "case" or val == "default" or val == "unsafe" or val == "return" or val == "break" or val == "continue" or val == "print" or val == "and" or val == "or" or val == "not" or val == "true" or val == "false" or val == "null" or val == "try" or val == "catch" or val == "weak" {
                         type = "KEYWORD"
                     }
                     append(tokens, [type, val, line, start_col])
@@ -352,6 +352,43 @@ fn parse_statement_inner() {
             expect("DELIMITER", ")")
             return ["Arena", name, size]
         }
+        if tok[1] == "enum" {
+            advance()
+            var name = cur_val()
+            advance()
+            expect("DELIMITER", "{")
+            var variants = []
+            do {
+                if cur_val() == "}" { break }
+                if cur_type() == "NEWLINE" or cur_val() == "," or cur_val() == ";" {
+                    advance()
+                } else {
+                    var variant_name = cur_val()
+                    advance()
+                    var fields = []
+                    if cur_val() == "(" {
+                        advance()
+                        if cur_val() != ")" {
+                            do {
+                                var field_name = cur_val()
+                                advance()
+                                if cur_val() == ":" {
+                                    advance()
+                                    advance()
+                                }
+                                append(fields, field_name)
+                                if cur_val() == "," { advance() } else { break }
+                            } til false
+                        }
+                        expect("DELIMITER", ")")
+                    }
+                    append(variants, [variant_name, fields])
+                    if cur_val() == "," or cur_val() == ";" { advance() }
+                }
+            } til false
+            expect("DELIMITER", "}")
+            return ["EnumDef", name, variants]
+        }
         if tok[1] == "struct" {
             advance()
             var name = cur_val()
@@ -386,6 +423,47 @@ fn parse_statement_inner() {
             } til false
             expect("DELIMITER", "}")
             return ["StructDef", name, fields, methods]
+        }
+        if tok[1] == "match" {
+            advance()
+            var subject = parse_expression()
+            expect("DELIMITER", "{")
+            var arms = []
+            do {
+                if cur_val() == "}" { break }
+                if cur_type() == "NEWLINE" or cur_val() == "," or cur_val() == ";" {
+                    advance()
+                } else {
+                    var variant_name = "default"
+                    var bindings = []
+                    if cur_val() == "case" {
+                        advance()
+                        variant_name = cur_val()
+                        advance()
+                        if cur_val() == "(" {
+                            advance()
+                            if cur_val() != ")" {
+                                do {
+                                    append(bindings, cur_val())
+                                    advance()
+                                    if cur_val() == "," { advance() } else { break }
+                                } til false
+                            }
+                            expect("DELIMITER", ")")
+                        }
+                    } elif cur_val() == "default" {
+                        advance()
+                    } else {
+                        var bad_tok = current()
+                        report_diagnostic("E0001", "syntax error: match arm expected", bad_tok[2], bad_tok[3], "use case Variant(...) or default")
+                    }
+                    expect("OPERATOR", "->")
+                    var body = [parse_statement()]
+                    append(arms, [variant_name, bindings, body])
+                }
+            } til false
+            expect("DELIMITER", "}")
+            return ["Match", subject, arms]
         }
         if tok[1] == "if" {
             advance()
@@ -847,6 +925,19 @@ var g_func_owned = [[]]
 var constants = []
 var g_loop_breaks = [[]]
 var g_loop_continues = [[]]
+// Each entry is [variant_name, field_names]. Enum variants are globally named.
+var g_enum_variants = []
+
+fn enum_variant_fields(name) {
+    var i = 0
+    do {
+        if i >= len(g_enum_variants) { break }
+        var entry = g_enum_variants[i]
+        if entry[0] == name { return entry[1] }
+        i = i + 1
+    } til i >= len(g_enum_variants)
+    return []
+}
 
 // Static Type Analysis State & Helpers
 var current_local_types = []
@@ -2344,6 +2435,51 @@ fn gen_statement(stmt) {
         emit_inst("call void @llvm_val_struct_set(ptr " + obj_reg + ", ptr " + member_const + ", ptr " + val_reg + ")")
         return
     }
+    if type == "EnumDef" {
+        var enum_name = stmt[1]
+        var variants = stmt[2]
+        var vi = 0
+        do {
+            if vi >= len(variants) { break }
+            var variant = variants[vi]
+            var variant_name = variant[0]
+            var fields = variant[1]
+            append(g_enum_variants, [variant_name, fields])
+
+            var num_f = len(fields)
+            var params_decl = "ptr %result_ptr"
+            var fi = 0
+            do {
+                if fi >= num_f { break }
+                params_decl = params_decl + ", ptr %arg_" + fields[fi]
+                fi = fi + 1
+            } til fi >= num_f
+
+            var ctor_code = "define void @wyrm_fn_" + variant_name + "(" + params_decl + ") {\n"
+            ctor_code = ctor_code + "  %enum_ptr = alloca %struct.Value, align 8\n"
+            ctor_code = ctor_code + "  %tag_ptr = alloca %struct.Value, align 8\n"
+            var enum_const = get_llvm_str_constant(enum_name + "::" + variant_name)
+            var tag_name_const = get_llvm_str_constant("__tag__")
+            var variant_const = get_llvm_str_constant(variant_name)
+            ctor_code = ctor_code + "  call void @llvm_val_struct_create(ptr %enum_ptr, ptr " + enum_const + ", i32 " + str(num_f + 1) + ")\n"
+            ctor_code = ctor_code + "  call void @llvm_val_string(ptr %tag_ptr, ptr " + variant_const + ")\n"
+            ctor_code = ctor_code + "  call void @llvm_val_struct_set(ptr %enum_ptr, ptr " + tag_name_const + ", ptr %tag_ptr)\n"
+            fi = 0
+            do {
+                if fi >= num_f { break }
+                var field_const = get_llvm_str_constant(fields[fi])
+                ctor_code = ctor_code + "  call void @llvm_val_struct_set(ptr %enum_ptr, ptr " + field_const + ", ptr %arg_" + fields[fi] + ")\n"
+                fi = fi + 1
+            } til fi >= num_f
+            ctor_code = ctor_code + "  call void @llvm_val_copy(ptr %result_ptr, ptr %enum_ptr)\n"
+            ctor_code = ctor_code + "  call void @llvm_val_drop(ptr %tag_ptr)\n"
+            ctor_code = ctor_code + "  call void @llvm_val_drop(ptr %enum_ptr)\n"
+            ctor_code = ctor_code + "  ret void\n}\n"
+            append(g_llvm_funcs, ctor_code)
+            vi = vi + 1
+        } til vi >= len(variants)
+        return
+    }
     if type == "StructDef" {
         var s_name = stmt[1]
         var fields = stmt[2]
@@ -2724,6 +2860,90 @@ fn gen_statement(stmt) {
             i = i + 1
         } til i >= num_exprs
         emit_inst("call void (i32, ...) @llvm_val_print(" + call_args + ")")
+        return
+    }
+    if type == "Match" {
+        var subject = stmt[1]
+        var arms = stmt[2]
+        var subject_reg = gen_expr(subject)
+        var tag_reg = gen_temp()
+        var tag_key = get_llvm_str_constant("__tag__")
+        emit_inst("call void @llvm_val_struct_get(ptr " + tag_reg + ", ptr " + subject_reg + ", ptr " + tag_key + ")")
+        var match_idx = temp_count[0]
+        temp_count[0] = temp_count[0] + 1
+        var merge_label = "match_merge_" + str(match_idx)
+        var default_arm = null
+        var ai = 0
+        do {
+            if ai >= len(arms) { break }
+            var arm = arms[ai]
+            if arm[0] == "default" {
+                default_arm = arm
+            } else {
+                var arm_label = "match_arm_" + str(match_idx) + "_" + str(ai)
+                var next_label = merge_label
+                if ai + 1 < len(arms) { next_label = "match_next_" + str(match_idx) + "_" + str(ai) }
+                var expected_reg = gen_temp()
+                var expected_const = get_llvm_str_constant(arm[0])
+                var equal_reg = gen_temp()
+                var cond_reg = "%match_cond_" + str(temp_count[0])
+                temp_count[0] = temp_count[0] + 1
+                emit_inst("call void @llvm_val_string(ptr " + expected_reg + ", ptr " + expected_const + ")")
+                emit_inst("call void @llvm_val_eq(ptr " + equal_reg + ", ptr " + tag_reg + ", ptr " + expected_reg + ")")
+                emit_inst(cond_reg + " = call i1 @llvm_val_to_bool(ptr " + equal_reg + ")")
+                emit_inst("br i1 " + cond_reg + ", label %" + arm_label + ", label %" + next_label)
+                emit_label(arm_label + ":")
+                var bindings = arm[1]
+                var fields = enum_variant_fields(arm[0])
+                var bi = 0
+                do {
+                    if bi >= len(bindings) { break }
+                    var binding = bindings[bi]
+                    var field_name = binding
+                    if bi < len(fields) { field_name = fields[bi] }
+                    if in_function[0] and not contains_val(declared_locals[0], binding) {
+                        append(g_allocas[0], "  %wyrm_var_" + binding + " = alloca %struct.Value, align 8")
+                        append(declared_locals[0], binding)
+                    }
+                    var binding_target = "%wyrm_var_" + binding
+                    if not in_function[0] {
+                        if not contains_val(emitted_globals[0], binding) {
+                            append(g_llvm_globals, "@wyrm_var_" + binding + " = global %struct.Value zeroinitializer, align 8")
+                            append(emitted_globals[0], binding)
+                        }
+                        binding_target = "@wyrm_var_" + binding
+                    }
+                    var field_key = get_llvm_str_constant(field_name)
+                    emit_inst("call void @llvm_val_struct_get(ptr " + binding_target + ", ptr " + subject_reg + ", ptr " + field_key + ")")
+                    bi = bi + 1
+                } til bi >= len(bindings)
+                push_scope()
+                var si = 0
+                var arm_body = arm[2]
+                do {
+                    if si >= len(arm_body) { break }
+                    gen_statement(arm_body[si])
+                    si = si + 1
+                } til si >= len(arm_body)
+                pop_scope()
+                emit_inst("br label %" + merge_label)
+                emit_label(next_label + ":")
+            }
+            ai = ai + 1
+        } til ai >= len(arms)
+        if default_arm != null {
+            push_scope()
+            var di = 0
+            var default_body = default_arm[2]
+            do {
+                if di >= len(default_body) { break }
+                gen_statement(default_body[di])
+                di = di + 1
+            } til di >= len(default_body)
+            pop_scope()
+        }
+        emit_inst("br label %" + merge_label)
+        emit_label(merge_label + ":")
         return
     }
     if type == "If" {

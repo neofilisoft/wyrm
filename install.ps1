@@ -43,13 +43,12 @@ try {
     gcc -std=c11 -O2 -c wyrm\lib\wyrm_ffi.c   -o wyrm_ffi.o   -Iwyrm\lib
     gcc -std=c11 -O2 -c wyrm\lib\stdlib\wyrm_std_json.c -o wyrm_std_json.o -Iwyrm\lib
     gcc -std=c11 -O2 -c wyrm\lib\stdlib\wyrm_std_yaml.c -o wyrm_std_yaml.o -Iwyrm\lib
-    gcc -std=c11 -O2 -c wyrm\lib\stdlib\wyrm_std_sdl.c  -o wyrm_std_sdl.o  -Iwyrm\lib
     gcc -std=c11 -O2 -c wyrm\lib\stdlib\wyrm_std_collections.c -o wyrm_std_collections.o -Iwyrm\lib
     gcc -std=c11 -O2 -c wyrm\lib\stdlib\wyrm_std_random.c -o wyrm_std_random.o -Iwyrm\lib
     gcc -std=c11 -O2 -c wyrm\lib\stdlib\wyrm_std_time.c   -o wyrm_std_time.o   -Iwyrm\lib
 
     # Compile temporary C++ bootstrap compiler
-    g++ wyrm\scr\wyrmc.cpp `
+    g++ wyrm\src\wyrmc.cpp `
         compiler\lexer\lexer.cpp `
         compiler\parser\parser.cpp `
         compiler\interpreter\interpreter.cpp `
@@ -58,7 +57,7 @@ try {
         compiler\transpiler\transpiler.cpp `
         wyrm_core.o wyrm_arena.o wyrm_str.o `
         wyrm_ffi.o wyrm_std_json.o wyrm_std_yaml.o `
-        wyrm_std_sdl.o wyrm_std_collections.o wyrm_std_random.o wyrm_std_time.o `
+        wyrm_std_collections.o wyrm_std_random.o wyrm_std_time.o `
         -o wyrmc_bootstrap.exe -std=c++20 -O2
 
     # Ensure no lingering compiler instances lock the binary
@@ -88,13 +87,13 @@ try {
     Remove-Item "compiler\wyrmc_temp.ll" -ErrorAction SilentlyContinue
 
     # Compile wyrpkg -> .wyrm\wyrpkg\wyrpkg.exe
-    g++ wyrm\scr\wyrpkg.cpp -o wyrpkg.exe -std=c++20 -O2
+    g++ wyrm\src\wyrpkg.cpp -o wyrpkg.exe -std=c++20 -O2
 
     # Compile bootstrap helper
-    gcc wyrm\scr\bootstrap.c -o bootstrap.exe -std=c11 -O2
+    gcc wyrm\src\bootstrap.c -o bootstrap.exe -std=c11 -O2
 
     # Clean up temporary object files and bootstrap executables
-    Remove-Item wyrm_core.o, wyrm_arena.o, wyrm_str.o, wyrm_ffi.o, wyrm_std_json.o, wyrm_std_yaml.o, wyrm_std_sdl.o, wyrm_std_collections.o, wyrm_std_random.o -ErrorAction SilentlyContinue
+    Remove-Item wyrm_core.o, wyrm_arena.o, wyrm_str.o, wyrm_ffi.o, wyrm_std_json.o, wyrm_std_yaml.o, wyrm_std_collections.o, wyrm_std_random.o, wyrm_std_time.o -ErrorAction SilentlyContinue
     Remove-Item wyrmc_bootstrap.exe, wyrmc_stage1.exe, compiler\wyrmc.exe -ErrorAction SilentlyContinue
 
     if (!(Test-Path "wyrmc.exe") -or !(Test-Path "wyrpkg.exe") -or !(Test-Path "bootstrap.exe")) {
@@ -121,6 +120,22 @@ try {
             $destExt = Join-Path $ed "neofilisoft.wyrm-syntax-$WyrmVersion"
             Copy-Item "extension" -Destination $destExt -Recurse -Force
             Write-Host "  syntax -> $destExt" -ForegroundColor Cyan
+        }
+    }
+
+    $vsixPath = Join-Path "extension" "wyrm-syntax-$WyrmVersion.vsix"
+    if (Test-Path $vsixPath) {
+        if (Get-Command code -ErrorAction SilentlyContinue) {
+            try {
+                code --install-extension $vsixPath --force | Out-Null
+                Write-Host "  Registered in VS Code via code CLI" -ForegroundColor Green
+            } catch {}
+        }
+        if (Get-Command cursor -ErrorAction SilentlyContinue) {
+            try {
+                cursor --install-extension $vsixPath --force | Out-Null
+                Write-Host "  Registered in Cursor via cursor CLI" -ForegroundColor Green
+            } catch {}
         }
     }
 } finally {
