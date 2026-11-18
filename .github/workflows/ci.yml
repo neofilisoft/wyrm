@@ -33,3 +33,21 @@ jobs:
         Write-Host "Wyrm bytes: $wyrmBytes"
         Write-Host "C runtime bytes: $cBytes"
         if ($wyrmBytes -le $cBytes) { throw 'Wyrm source bytes must be greater than C runtime bytes' }
+
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Ensure C/C++ toolchain
+      run: |
+        if ! command -v g++ >/dev/null 2>&1 || ! command -v gcc >/dev/null 2>&1; then
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential g++ gcc
+        fi
+        g++ --version
+        gcc --version
+
+    - name: Build and run unit, CLI and smoke gates
+      run: bash scripts/ci-tests.sh
