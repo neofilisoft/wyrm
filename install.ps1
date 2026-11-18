@@ -14,9 +14,62 @@ $WyrpkgDir    = Join-Path $InstallRoot "wyrpkg"
 $PackagesDir  = Join-Path $InstallRoot "packages\wyrmlang"
 $LibraryDir   = Join-Path $InstallRoot "library"
 
+# Only processes launched by THIS installer may ever be stopped. Name-based
+# process killing is never used because it would kill unrelated user compilers.
+$InstallerOwnedProcesses = [System.Collections.Generic.List[System.Diagnostics.Process]]::new()
+
+function Stop-InstallerOwnedProcesses {
+    foreach ($proc in $InstallerOwnedProcesses) {
+        try {
+            if ($proc -and -not $proc.HasExited) {
+                Stop-Process -Id $proc.Id -Force -ErrorAction Stop
+            }
+        } catch {
+            Write-Host "Warning: could not stop installer-launched process: $_" -ForegroundColor Yellow
+        }
+    }
+}
+
+function Remove-InstallerArtifact {
+    param([string[]]$Artifacts)
+    foreach ($artifact in $Artifacts) {
+        if (Test-Path $artifact) {
+            try {
+                Remove-Item $artifact -Force -ErrorAction Stop
+            } catch {
+                Write-Host "Error: cannot replace '$artifact' because it is currently in use." -ForegroundColor Red
+                Write-Host "Close any running Wyrm compiler or package-manager process that holds this file, then re-run the installer." -ForegroundColor Red
+                throw
+            }
+        }
+    }
+}
+
+function Copy-InstallerBinary {
+    param([string]$Source, [string]$Destination)
+    try {
+        Copy-Item $Source -Destination $Destination -Force -ErrorAction Stop
+    } catch {
+        Write-Host "Error: cannot install '$Destination' because it is currently in use." -ForegroundColor Red
+        Write-Host "Close any running Wyrm compiler or package-manager process, then re-run the installer." -ForegroundColor Red
+        throw
+    }
+}
+
 if ((Test-Path "C:\Program Files\LLVM\bin") -and ($env:PATH -notlike "*LLVM\bin*")) {
     $env:PATH = "C:\Program Files\LLVM\bin;$env:PATH"
 }
+
+# The LLVM self-hosting stage compiles generated IR with clang. gcc/g++ can build
+# the bootstrap compiler but cannot replace clang for that stage.
+if (-not (Get-Command clang -ErrorAction SilentlyContinue)) {
+    Write-Host "Error: clang was not found in PATH." -ForegroundColor Red
+    Write-Host "The LLVM self-hosting stage requires clang to compile generated LLVM IR."
+    Write-Host "gcc/g++ alone are not sufficient. Install LLVM (https://llvm.org) and ensure"
+    Write-Host "clang.exe is on PATH, then re-run this installer."
+    exit 1
+}
+Write-Host "LLVM stage compiler: clang" -ForegroundColor Cyan
 
 Write-Host "Initializing Wyrm global installation (v$WyrmVersion)..." -ForegroundColor Green
 Push-Location $ScriptDir
@@ -46,6 +99,13 @@ try {
     gcc -std=c11 -O2 -c wyrm\lib\stdlib\wyrm_std_collections.c -o wyrm_std_collections.o -Iwyrm\lib
     gcc -std=c11 -O2 -c wyrm\lib\stdlib\wyrm_std_random.c -o wyrm_std_random.o -Iwyrm\lib
     gcc -std=c11 -O2 -c wyrm\lib\stdlib\wyrm_std_time.c   -o wyrm_std_time.o   -Iwyrm\lib
+    gcc -std=c11 -O2 -c wyrm\lib\stdlib\wyrm_std_os.c     -o wyrm_std_os.o     -Iwyrm\lib
+    gcc -std=c11 -O2 -c wyrm\lib\stdlib\wyrm_std_fs.c     -o wyrm_std_fs.o     -Iwyrm\lib
+    gcc -std=c11 -O2 -c wyrm\lib\stdlib\wyrm_std_path.c   -o wyrm_std_path.o   -Iwyrm\lib
+    gcc -std=c11 -O2 -c wyrm\lib\stdlib\wyrm_std_io.c     -o wyrm_std_io.o     -Iwyrm\lib
+    # HTTP uses a graceful no-curl fallback unless libcurl is available; select it
+    # to keep the installer dependency-free (matches the project's test build).
+    gcc -std=c11 -O2 -DWYRM_NO_CURL -c wyrm\lib\stdlib\wyrm_std_http.c -o wyrm_std_http.o -Iwyrm\lib
 
     # Compile temporary C++ bootstrap compiler
     g++ wyrm\src\wyrmc.cpp `
@@ -58,19 +118,19 @@ try {
         wyrm_core.o wyrm_arena.o wyrm_str.o `
         wyrm_ffi.o wyrm_std_json.o wyrm_std_yaml.o `
         wyrm_std_collections.o wyrm_std_random.o wyrm_std_time.o `
+        wyrm_std_os.o wyrm_std_fs.o wyrm_std_path.o `
+        wyrm_std_io.o wyrm_std_http.o `
         -o wyrmc_bootstrap.exe -std=c++20 -O2
 
-    # Ensure no lingering compiler instances lock the binary
-    Get-Process wyrmc, wyrmc_bootstrap, wyrmc_stage1, wyrpkg -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Milliseconds 200
-
-    # Clean up any leftover temporary artifacts before Stage 1
+    # Clean up any leftover temporary artifacts before Stage 1. If a file is
+    # locked by another program, report it instead of killing unrelated processes.
     Remove-Item "compiler\wyrmc_temp.ll", "wyrmc_temp.ll" -ErrorAction SilentlyContinue
-    Remove-Item "compiler\wyrmc.exe", "wyrmc_stage1.exe", "wyrmc.exe" -ErrorAction SilentlyContinue
+    Remove-InstallerArtifact @("compiler\wyrmc.exe", "wyrmc_stage1.exe", "wyrmc.exe")
 
     # Stage 1: Build the self-hosted compiler source using the temporary bootstrap compiler
     Write-Host "Self-hosting Stage 1: Building self-hosted compiler using bootstrap compiler..." -ForegroundColor Cyan
     $p1 = Start-Process -FilePath "cmd.exe" -ArgumentList '/c', '.\wyrmc_bootstrap.exe build compiler\wyrmc.wyr' -NoNewWindow -Wait -PassThru
+    $InstallerOwnedProcesses.Add($p1)
     if ($p1.ExitCode -ne 0 -or !(Test-Path "compiler\wyrmc.exe")) {
         throw "Failed to compile Stage 1 self-hosted compiler (ExitCode: $($p1.ExitCode))."
     }
@@ -81,6 +141,7 @@ try {
     # Stage 2: Rebuild the self-hosted compiler using the Stage 1 compiler to achieve true self-hosting
     Write-Host "Self-hosting Stage 2: Rebuilding self-hosted compiler using Stage 1 compiler..." -ForegroundColor Cyan
     $p2 = Start-Process -FilePath "cmd.exe" -ArgumentList '/c', '.\wyrmc_stage1.exe build compiler\wyrmc.wyr -o wyrmc.exe' -NoNewWindow -Wait -PassThru
+    $InstallerOwnedProcesses.Add($p2)
     if ($p2.ExitCode -ne 0 -or !(Test-Path "wyrmc.exe")) {
         throw "Failed to compile Stage 2 self-hosted compiler (ExitCode: $($p2.ExitCode))."
     }
@@ -93,17 +154,17 @@ try {
     gcc wyrm\src\bootstrap.c -o bootstrap.exe -std=c11 -O2
 
     # Clean up temporary object files and bootstrap executables
-    Remove-Item wyrm_core.o, wyrm_arena.o, wyrm_str.o, wyrm_ffi.o, wyrm_std_json.o, wyrm_std_yaml.o, wyrm_std_collections.o, wyrm_std_random.o, wyrm_std_time.o -ErrorAction SilentlyContinue
-    Remove-Item wyrmc_bootstrap.exe, wyrmc_stage1.exe, compiler\wyrmc.exe -ErrorAction SilentlyContinue
+    Remove-Item wyrm_core.o, wyrm_arena.o, wyrm_str.o, wyrm_ffi.o, wyrm_std_json.o, wyrm_std_yaml.o, wyrm_std_collections.o, wyrm_std_random.o, wyrm_std_time.o, wyrm_std_os.o, wyrm_std_fs.o, wyrm_std_path.o, wyrm_std_io.o, wyrm_std_http.o -ErrorAction SilentlyContinue
+    Remove-InstallerArtifact @("wyrmc_bootstrap.exe", "wyrmc_stage1.exe", "compiler\wyrmc.exe")
 
     if (!(Test-Path "wyrmc.exe") -or !(Test-Path "wyrpkg.exe") -or !(Test-Path "bootstrap.exe")) {
         throw "Failed to compile native Wyrm tools. Please ensure gcc/g++ are in PATH."
     }
 
     # Install binaries into their subdirectories
-    Copy-Item "wyrmc.exe"    -Destination (Join-Path $WyrmcDir  "wyrmc.exe")  -Force
-    Copy-Item "wyrpkg.exe"   -Destination (Join-Path $WyrpkgDir "wyrpkg.exe") -Force
-    Copy-Item "bootstrap.exe" -Destination (Join-Path $InstallRoot "bootstrap.exe") -Force
+    Copy-InstallerBinary "wyrmc.exe"     (Join-Path $WyrmcDir    "wyrmc.exe")
+    Copy-InstallerBinary "wyrpkg.exe"    (Join-Path $WyrpkgDir   "wyrpkg.exe")
+    Copy-InstallerBinary "bootstrap.exe" (Join-Path $InstallRoot "bootstrap.exe")
 
     Write-Host "  wyrmc  -> $WyrmcDir\wyrmc.exe"  -ForegroundColor Cyan
     Write-Host "  wyrpkg -> $WyrpkgDir\wyrpkg.exe" -ForegroundColor Cyan
@@ -139,6 +200,8 @@ try {
         }
     }
 } finally {
+    # Stop only processes this installer launched; never touch unrelated user processes.
+    Stop-InstallerOwnedProcesses
     Pop-Location
 }
 
