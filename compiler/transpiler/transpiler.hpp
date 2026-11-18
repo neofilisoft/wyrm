@@ -91,6 +91,7 @@ private:
     std::string last_result_;
     std::string load_c_runtime();
     int lambda_counter_ = 0; // M5: unique lambda function counter
+    int short_circuit_counter_ = 0; // unique id per generated short-circuit expression
 };
 
 } // namespace wyrm
