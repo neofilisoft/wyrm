@@ -73,9 +73,8 @@ Wyrm (`.wyr`) is a **static systems programming language** with a self-hosted co
   ```
 - **New stdlib modules**: `os`, `fs`, `path`, `io`, `http` (see Standard Library below).
 - **New Pure Wyrm packages**: `std.math`, `std.string`, `std.log` (see `library/std/`).
-- **`wyrmc test`**: Discovers and runs all `test_*.wyr` files in a directory.
-- **`wyrmc check`**: Parse and lint a file without executing.
-- **`wyrmc fmt`**: Format a source file in-place.
+- **`test` / `check` / `fmt`**: Available in the Stage 0 bootstrap compiler (`wyrmc_stage0`), not yet in the self-hosted `wyrmc` (see Compiler Commands).
+  - `check` performs lexical and syntactic validation only; it does not perform semantic type checking.
 - **`wyrpkg add`** and **`wyrpkg lock`**: Dependency pinning.
 - **Memory bug fixes**: Correct ownership transfer on `return` of `owned` values; `val_struct_create` now deep-copies initial fields.
 
@@ -139,15 +138,30 @@ wyrpkg --version   # wyrpkg 1.2.1
 
 ## Compiler Commands
 
+The executable installed as `wyrmc` is the self-hosted compiler built from
+`compiler/wyrmc.wyr`. It supports:
+
 ```bash
-wyrmc build  <file.wyr>           # Compile to native binary
-wyrmc run    <file.wyr>           # Run via interpreter
-wyrmc test   [dir]                # Discover and run test_*.wyr files
-wyrmc check  <file.wyr>           # Parse/lint only, no execution
-wyrmc fmt    <file.wyr>           # Format source file in-place
-wyrmc clean  [--all]              # Remove build artifacts
-wyrmc --version                   # Print version
+wyrmc build  <file.wyr> [-o <out.exe>]  # Compile to native binary
+wyrmc run    <file.wyr> [args...]       # Run via interpreter
+wyrmc clean  [--all]                    # Remove Wyrm-owned temp files and cache
+wyrmc --version                         # Print version
+wyrmc --help                            # Print usage
 ```
+
+The Stage 0 bootstrap compiler (`wyrmc_stage0`, built from `wyrm/src/wyrmc.cpp`)
+additionally implements `test`, `check` and `fmt`:
+
+```bash
+wyrmc_stage0 test  [dir]       # Discover and run test_*.wyr files
+wyrmc_stage0 check <file.wyr>  # Lex + parse validation only; no type checking, no execution
+wyrmc_stage0 fmt   <file.wyr>  # Format in-place; saves the original as <file>.wyr.bak
+```
+
+> **Current gap:** `test`, `check` and `fmt` are not available in the
+> self-hosted `wyrmc`. `check` validates syntax only; Wyrm has no semantic
+> type-checking pass. `clean --all` removes executables only when a `.wyr`
+> source with the same base name is present in the working directory.
 
 Native builds do not require libcurl by default. The HTTP module returns a
 clear unavailable error unless the target has libcurl configured. Set

@@ -3856,6 +3856,7 @@ fn main() {
         print("  wyrmc clean [--all]")
         print("  wyrmc --version")
         print("  wyrmc --help")
+        print("Note: 'test', 'check' and 'fmt' are only in the Stage 0 bootstrap compiler.")
         exit(0)
     }
 
@@ -3873,6 +3874,7 @@ fn main() {
         print("  wyrmc clean [--all]")
         print("  wyrmc --version")
         print("  wyrmc --help")
+        print("Note: 'test', 'check' and 'fmt' are only in the Stage 0 bootstrap compiler.")
         exit(0)
     }
 
