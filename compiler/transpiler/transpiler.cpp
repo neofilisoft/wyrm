@@ -6,8 +6,48 @@
 #include <sstream>
 #include <cstdlib>
 #include <algorithm>
+#include <charconv>
+#include <cmath>
+#include <limits>
+#include <locale>
+#include <iomanip>
 
 namespace wyrm {
+
+namespace {
+
+std::string format_double_literal(double value) {
+    if (!std::isfinite(value)) {
+        throw std::runtime_error("Compilation Error: Non-finite number literal cannot be represented in C");
+    }
+
+    std::string literal;
+#if defined(__cpp_lib_to_chars) && __cpp_lib_to_chars >= 201611L
+    char buffer[std::numeric_limits<double>::max_digits10 * 4];
+    const auto conversion = std::to_chars(buffer, buffer + sizeof(buffer), value,
+                                          std::chars_format::general,
+                                          std::numeric_limits<double>::max_digits10);
+    if (conversion.ec == std::errc()) {
+        literal.assign(buffer, conversion.ptr);
+    }
+#endif
+    if (literal.empty()) {
+        std::ostringstream stream;
+        stream.imbue(std::locale::classic());
+        stream << std::setprecision(std::numeric_limits<double>::max_digits10) << value;
+        literal = stream.str();
+    }
+
+    // to_chars / defaultfloat may emit an integer-looking token for values
+    // such as 1.0. Emit a floating constant so the double value is explicit
+    // at the C boundary.
+    if (literal.find_first_of(".eE") == std::string::npos) {
+        literal += ".0";
+    }
+    return literal;
+}
+
+} // namespace
 
 Transpiler::Transpiler(const std::string& src_dir)
     : in_function(false), has_main_def(false), in_unsafe(false), source_dir(src_dir) {}
@@ -221,13 +261,7 @@ std::string Transpiler::transpile(std::vector<ASTNodePtr>& ast) {
 }
 
 void Transpiler::visit(NumberNode* node) {
-    std::string val_str = std::to_string(node->value);
-    // Remove trailing zeros for clean output
-    val_str.erase(val_str.find_last_not_of('0') + 1, std::string::npos);
-    if (val_str.back() == '.') {
-        val_str.pop_back();
-    }
-    last_result_ = "val_number(" + val_str + ")";
+    last_result_ = "val_number(" + format_double_literal(node->value) + ")";
 }
 
 void Transpiler::visit(StringNode* node) {
@@ -257,9 +291,40 @@ void Transpiler::visit(IdentifierNode* node) {
 }
 
 void Transpiler::visit(BinaryOpNode* node) {
+    const std::string op = node->op.value;
+    const bool is_and = (op == "and" || op == "&&");
+    const bool is_or = (op == "or" || op == "||");
+
+    if (is_and || is_or) {
+        // Match the interpreter: the left operand decides the result when its
+        // truth value is already conclusive; only then the right operand is
+        // skipped. The winning operand (not a coerced boolean) is the value.
+        const std::string left = evaluate(node->left.get());
+        const std::string right = evaluate(node->right.get());
+        const std::string suffix = std::to_string(short_circuit_counter_++);
+        const std::string left_var = "__wyrm_sc_left_" + suffix;
+        const std::string result_var = "__wyrm_sc_result_" + suffix;
+        const std::string skip_rhs = is_and
+            ? "!val_to_bool(" + left_var + ")"
+            : "val_to_bool(" + left_var + ")";
+
+        std::ostringstream expr;
+        expr << "({\n"
+             << "    Value " << left_var << " = " << left << ";\n"
+             << "    Value " << result_var << ";\n"
+             << "    if (" << skip_rhs << ") {\n"
+             << "        " << result_var << " = " << left_var << ";\n"
+             << "    } else {\n"
+             << "        " << result_var << " = " << right << ";\n"
+             << "    }\n"
+             << "    " << result_var << ";\n"
+             << "})";
+        last_result_ = expr.str();
+        return;
+    }
+
     std::string left = evaluate(node->left.get());
     std::string right = evaluate(node->right.get());
-    std::string op = node->op.value;
 
     std::string c_func;
     if (op == "+") c_func = "val_add";
@@ -274,8 +339,6 @@ void Transpiler::visit(BinaryOpNode* node) {
     else if (op == ">") c_func = "val_gt";
     else if (op == "<=") c_func = "val_le";
     else if (op == ">=") c_func = "val_ge";
-    else if (op == "and" || op == "&&") c_func = "val_and";
-    else if (op == "or" || op == "||") c_func = "val_or";
     else if (op == "**") c_func = "val_pow";
     else throw std::runtime_error("Unknown operator '" + op + "'");
 

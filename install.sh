@@ -44,6 +44,16 @@ if ! command -v g++ &> /dev/null && ! command -v clang++ &> /dev/null; then
     exit 1
 fi
 
+# The LLVM self-hosting stage compiles generated IR (and the C runtime) with clang.
+# gcc/g++ can build the bootstrap compiler but cannot replace clang for that stage.
+if ! command -v clang &> /dev/null; then
+    echo -e "${RED}Error: clang was not found in PATH.${NC}"
+    echo "The LLVM self-hosting stage requires clang to compile generated LLVM IR."
+    echo "gcc/g++ alone are not sufficient. Install LLVM/Clang (e.g. 'apt install clang',"
+    echo "'brew install llvm', or Xcode Command Line Tools) and re-run this installer."
+    exit 1
+fi
+
 CC="gcc"
 if ! command -v gcc &> /dev/null; then
     CC="clang"
@@ -56,6 +66,7 @@ fi
 
 echo -e "Using C compiler:   ${CYAN}${CC}${NC}"
 echo -e "Using C++ compiler: ${CYAN}${CXX}${NC}"
+echo -e "LLVM stage compiler: ${CYAN}clang${NC}"
 
 # 1. Create destination directories
 mkdir -p "$INSTALL_ROOT" "$WYRMC_DIR" "$WYRPKG_DIR" "$PACKAGES_DIR" "$LIBRARY_DIR"
@@ -83,6 +94,13 @@ $CC -std=c11 -O2 -c wyrm/lib/stdlib/wyrm_std_yaml.c -o wyrm_std_yaml.o -Iwyrm/li
 $CC -std=c11 -O2 -c wyrm/lib/stdlib/wyrm_std_collections.c -o wyrm_std_collections.o -Iwyrm/lib
 $CC -std=c11 -O2 -c wyrm/lib/stdlib/wyrm_std_random.c -o wyrm_std_random.o -Iwyrm/lib
 $CC -std=c11 -O2 -c wyrm/lib/stdlib/wyrm_std_time.c -o wyrm_std_time.o -Iwyrm/lib
+$CC -std=c11 -O2 -c wyrm/lib/stdlib/wyrm_std_os.c -o wyrm_std_os.o -Iwyrm/lib
+$CC -std=c11 -O2 -c wyrm/lib/stdlib/wyrm_std_fs.c -o wyrm_std_fs.o -Iwyrm/lib
+$CC -std=c11 -O2 -c wyrm/lib/stdlib/wyrm_std_path.c -o wyrm_std_path.o -Iwyrm/lib
+$CC -std=c11 -O2 -c wyrm/lib/stdlib/wyrm_std_io.c -o wyrm_std_io.o -Iwyrm/lib
+# HTTP falls back to a graceful no-curl implementation unless libcurl is available;
+# keep the installer dependency-free by selecting that path (matches the project tests).
+$CC -std=c11 -O2 -DWYRM_NO_CURL -c wyrm/lib/stdlib/wyrm_std_http.c -o wyrm_std_http.o -Iwyrm/lib
 
 # 4. Compile temporary C++ bootstrap compiler
 echo "Compiling bootstrap compiler..."
@@ -96,6 +114,8 @@ $CXX wyrm/src/wyrmc.cpp \
     wyrm_core.o wyrm_arena.o wyrm_str.o \
     wyrm_ffi.o wyrm_std_json.o wyrm_std_yaml.o \
     wyrm_std_collections.o wyrm_std_random.o wyrm_std_time.o \
+    wyrm_std_os.o wyrm_std_fs.o wyrm_std_path.o \
+    wyrm_std_io.o wyrm_std_http.o \
     -o wyrmc_bootstrap -std=c++20 -O2
 
 # 5. Build self-hosted compiler stages

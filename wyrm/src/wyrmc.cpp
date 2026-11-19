@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cstdio>
+#include <cctype>
 #include <filesystem>
 #include "../../compiler/lexer/lexer.hpp"
 #include "../../compiler/parser/parser.hpp"
@@ -136,33 +137,32 @@ int run_native_compiler(const std::string& filename, const std::string& output_o
 int run_clean(bool clean_all) {
     int removed_count = 0;
     try {
-        for (const auto& entry : fs::directory_iterator(".")) {
-            if (!entry.is_regular_file()) continue;
-            std::string name = entry.path().filename().string();
-            bool should_remove = false;
-
-            if (name == "_wyrm_temp.c") {
-                should_remove = true;
-            } else if (name.size() > 8 && name.substr(name.size() - 8) == "_temp.ll") {
-                should_remove = true;
-            } else if (name.size() > 8 && name.substr(name.size() - 8) == "_run.exe") {
-                should_remove = true;
-            } else if (name.size() > 2 && name.substr(name.size() - 2) == ".o") {
-                should_remove = true;
-            } else if (name.size() > 4 && name.substr(name.size() - 4) == ".obj") {
-                should_remove = true;
-            } else if (clean_all && name.size() > 4 && name.substr(name.size() - 4) == ".exe") {
-                std::string base = name.substr(0, name.size() - 4);
-                if (fs::exists(base + ".wyr") || name == "output.exe" || name == "a.exe") {
-                    should_remove = true;
-                }
+        // Only files that Wyrm itself creates are eligible for removal.
+        // Generic object/executable patterns are deliberately excluded so
+        // artifacts produced by other toolchains are never touched.
+        const auto remove_wyrm_file = [&](const fs::path& path) {
+            std::error_code ec;
+            if (fs::is_regular_file(path, ec) && fs::remove(path, ec)) {
+                std::cout << "  Removed: " << path.filename().string() << std::endl;
+                ++removed_count;
             }
+        };
 
-            if (should_remove) {
+        // Intermediate C file emitted by run_native_compiler.
+        remove_wyrm_file(fs::path("_wyrm_temp.c"));
+
+        if (clean_all) {
+            for (const auto& entry : fs::directory_iterator(".")) {
                 std::error_code ec;
-                if (fs::remove(entry.path(), ec)) {
-                    std::cout << "  Removed: " << name << std::endl;
-                    removed_count++;
+                if (!entry.is_regular_file(ec)) continue;
+                const fs::path path = entry.path();
+                if (path.extension() != ".exe") continue;
+                // Remove an executable only when a Wyrm source with the same
+                // base name exists in this directory.
+                fs::path source = path;
+                source.replace_extension(".wyr");
+                if (fs::is_regular_file(source, ec)) {
+                    remove_wyrm_file(path);
                 }
             }
         }
@@ -188,6 +188,225 @@ int run_clean(bool clean_all) {
     return 0;
 }
 
+namespace {
+
+constexpr std::string_view kWyrmIndentUnit = "    ";
+
+struct FormatResult {
+    bool ok = false;
+    std::string text;
+    std::string error;
+};
+
+// Re-indent code while treating string literals and comments as opaque regions.
+// Braces inside those regions are copied byte-for-byte and never change the
+// indentation level. Lexically malformed input is rejected so the original
+// source is never overwritten with corrupted output.
+FormatResult format_wyrm_source(const std::string& source) {
+    std::string out;
+    out.reserve(source.size() + source.size() / 8);
+
+    int indent = 0;
+    bool at_line_start = true;
+    bool line_has_code = false;
+
+    const auto emit_indent = [&]() {
+        if (at_line_start) {
+            for (int level = 0; level < indent; ++level) out += kWyrmIndentUnit;
+            at_line_start = false;
+        }
+    };
+
+    const auto emit_char = [&](char value) {
+        emit_indent();
+        out += value;
+    };
+
+    const auto finish_line = [&]() {
+        if (at_line_start) return;
+        while (!out.empty() && out.back() == ' ') out.pop_back();
+        out += '\n';
+        at_line_start = true;
+        line_has_code = false;
+    };
+
+    const auto handle_newline = [&]() {
+        if (at_line_start) {
+            out += '\n';
+        } else {
+            finish_line();
+        }
+        line_has_code = false;
+    };
+
+    size_t pos = 0;
+
+    // A brace already ends its output line; drop the matching source newline
+    // so it is not emitted a second time as a blank line.
+    const auto consume_newline_after_brace = [&]() {
+        while (pos < source.size()) {
+            const char value = source[pos];
+            if (value == '\n') {
+                ++pos;
+                return;
+            }
+            if (value == ' ' || value == '\t' || value == '\r') {
+                ++pos;
+                continue;
+            }
+            break;
+        }
+    };
+
+    while (pos < source.size()) {
+        const char ch = source[pos];
+
+        if (ch == '\r') {
+            ++pos;
+            continue;
+        }
+        if (ch == '\n') {
+            handle_newline();
+            ++pos;
+            continue;
+        }
+
+        if (ch == ' ' || ch == '\t') {
+            if (at_line_start) {
+                ++pos;
+                continue;
+            }
+            emit_char(' ');
+            while (pos < source.size() &&
+                   (source[pos] == ' ' || source[pos] == '\t')) {
+                ++pos;
+            }
+            continue;
+        }
+
+        // In Wyrm, '//' starts a comment only before any code on the physical
+        // line; elsewhere it is the floor-division operator.
+        const bool line_comment = ch == '/' && pos + 1 < source.size() &&
+                                  source[pos + 1] == '/' && !line_has_code;
+        if (line_comment) {
+            while (pos < source.size() && source[pos] != '\n' &&
+                   source[pos] != '\r') {
+                emit_char(source[pos]);
+                ++pos;
+            }
+            continue;
+        }
+
+        if (ch == '/' && pos + 1 < source.size() && source[pos + 1] == '*') {
+            const size_t close = source.find("*/", pos + 2);
+            if (close == std::string::npos) {
+                return {false, {}, "Unterminated block comment"};
+            }
+            emit_indent();
+            out.append(source, pos, close + 2 - pos);
+            pos = close + 2;
+            continue;
+        }
+
+        if (ch == '"' || ch == '\'') {
+            const char quote = ch;
+            emit_char(quote);
+            ++pos;
+            bool closed = false;
+            while (pos < source.size()) {
+                const char inner = source[pos];
+                emit_char(inner);
+                ++pos;
+                if (inner == '\\' && pos < source.size()) {
+                    emit_char(source[pos]);
+                    ++pos;
+                    continue;
+                }
+                if (inner == quote) {
+                    closed = true;
+                    break;
+                }
+            }
+            if (!closed) {
+                return {false, {}, "Unterminated string literal"};
+            }
+            line_has_code = true;
+            continue;
+        }
+
+        if (ch == '{') {
+            while (!out.empty() && out.back() == ' ') out.pop_back();
+            if (!at_line_start) emit_char(' ');
+            emit_char('{');
+            line_has_code = true;
+            finish_line();
+            ++indent;
+            ++pos;
+            consume_newline_after_brace();
+            continue;
+        }
+
+        if (ch == '}') {
+            if (indent == 0) {
+                return {false, {}, "Unbalanced closing brace '}'"};
+            }
+            --indent;
+            finish_line();
+            emit_char('}');
+            line_has_code = true;
+            ++pos;
+
+            // The parser expects these continuation keywords immediately after
+            // the closing brace, so keep them on the same output line. Look
+            // ahead past spacing and block comments, but leave pos untouched
+            // so those comments are still emitted.
+            size_t look = pos;
+            while (look < source.size()) {
+                if (source[look] == ' ' || source[look] == '\t') {
+                    ++look;
+                    continue;
+                }
+                if (source[look] == '/' && look + 1 < source.size() &&
+                    source[look + 1] == '*') {
+                    const size_t close = source.find("*/", look + 2);
+                    if (close != std::string::npos) {
+                        look = close + 2;
+                        continue;
+                    }
+                }
+                break;
+            }
+            size_t word_end = look;
+            while (word_end < source.size() &&
+                   (std::isalnum(static_cast<unsigned char>(source[word_end])) ||
+                    source[word_end] == '_')) {
+                ++word_end;
+            }
+            const std::string_view word(source.data() + look, word_end - look);
+            const bool attached = word == "elif" || word == "else" ||
+                                  word == "til" || word == "catch" ||
+                                  word == "finally";
+            if (attached) continue;
+
+            finish_line();
+            consume_newline_after_brace();
+            continue;
+        }
+
+        emit_char(ch);
+        line_has_code = true;
+        ++pos;
+    }
+
+    if (indent != 0) {
+        return {false, {}, "Unbalanced braces: missing closing '}'"};
+    }
+    if (!out.empty() && out.back() != '\n') out += '\n';
+    return {true, std::move(out), {}};
+}
+
+} // namespace
+
 int main(int argc, char* argv[]) {
     if (argc > 1) {
         std::string arg1 = argv[1];
@@ -203,14 +422,17 @@ int main(int argc, char* argv[]) {
                       << "  build <file.wyr>  Compile source file to native binary\n"
                       << "  run <file.wyr>    Run source file (native C++ interpreter)\n"
                       << "  test [dir]        Run all test_*.wyr files, report PASS/FAIL\n"
-                      << "  check <file.wyr>  Type-check and lint only (no execution)\n"
-                      << "  fmt <file.wyr>    Format source file in-place\n"
-                      << "  clean [--all]     Clean temporary build artifacts and cache\n"
+                      << "  check <file.wyr>  Parse/lint only (no type checking or execution)\n"
+                      << "  fmt <file.wyr>    Format source file in-place (writes <file>.bak)\n"
+                      << "  clean [--all]     Remove Wyrm-owned temp files and cache\n"
                       << "  <file.wyr>        Run source file directly (default)\n\n"
                       << "Options:\n"
-                      << "  --all, -a         Used with clean to remove compiled binaries (.exe)\n"
+                      << "  --all, -a         With clean, also remove .exe files having a matching .wyr\n"
                       << "  --version, -v     Display compiler/VM version\n"
-                      << "  --help, -h        Display help information\n";
+                      << "  --help, -h        Display help information\n\n"
+                      << "This is the Stage 0 bootstrap compiler. The self-hosted 'wyrmc' built from\n"
+                      << "compiler/wyrmc.wyr supports build/run/clean only; test, check and fmt are\n"
+                      << "not available there.\n";
             return 0;
         }
 
@@ -309,62 +531,56 @@ int main(int argc, char* argv[]) {
                 std::cerr << "Error: Please specify the source file to format." << std::endl;
                 return 1;
             }
-            std::string filename = argv[2];
-            std::ifstream in_file(filename);
+            const std::string filename = argv[2];
+            std::ifstream in_file(filename, std::ios::binary);
             if (!in_file.good()) {
                 std::cerr << "Error: Cannot open '" << filename << "'" << std::endl;
                 return 1;
             }
-            std::stringstream buf; buf << in_file.rdbuf();
-            std::string source = buf.str();
+            std::stringstream buf;
+            buf << in_file.rdbuf();
+            const std::string source = buf.str();
             in_file.close();
 
-            // Backup original
-            std::string backup = filename + ".bak";
-            {
-                std::ofstream bk(backup);
-                bk << source;
+            const FormatResult result = format_wyrm_source(source);
+            if (!result.ok) {
+                std::cerr << "Error: Cannot format '" << filename << "': "
+                          << result.error << ". File left unchanged." << std::endl;
+                return 1;
             }
 
-            // Simple formatter: normalize indentation (4 spaces), newlines
-            // Parse and re-emit tokens with clean spacing
-            std::string formatted;
-            int indent = 0;
-            bool at_line_start = true;
-            for (size_t i = 0; i < source.size(); ) {
-                char c = source[i];
-                if (c == '{') {
-                    if (!at_line_start) formatted += ' ';
-                    formatted += '{'; formatted += '\n';
-                    indent++;
-                    at_line_start = true;
-                    i++;
-                } else if (c == '}') {
-                    if (indent > 0) indent--;
-                    if (!at_line_start) formatted += '\n';
-                    for (int k = 0; k < indent; k++) formatted += "    ";
-                    formatted += '}'; formatted += '\n';
-                    at_line_start = true;
-                    i++;
-                } else if (c == '\n') {
-                    if (!at_line_start) formatted += '\n';
-                    at_line_start = true;
-                    i++;
-                } else if (c == '\r') {
-                    i++; // skip CR
-                } else {
-                    if (at_line_start) {
-                        for (int k = 0; k < indent; k++) formatted += "    ";
-                        at_line_start = false;
-                    }
-                    formatted += c;
-                    i++;
+            const std::string backup = filename + ".bak";
+            {
+                std::ofstream bk(backup, std::ios::binary | std::ios::trunc);
+                if (!bk.good()) {
+                    std::cerr << "Error: Cannot create backup '" << backup
+                              << "'. File left unchanged." << std::endl;
+                    return 1;
+                }
+                bk << source;
+                if (!bk.good()) {
+                    std::cerr << "Error: Cannot write backup '" << backup
+                              << "'. File left unchanged." << std::endl;
+                    return 1;
                 }
             }
 
-            std::ofstream out_file(filename);
-            out_file << formatted;
-            std::cout << "[wyrmc " << WYRMC_VERSION << "] Formatted '" << filename << "' (backup: " << backup << ")" << std::endl;
+            {
+                std::ofstream out_file(filename, std::ios::binary | std::ios::trunc);
+                if (!out_file.good()) {
+                    std::cerr << "Error: Cannot open '" << filename
+                              << "' for writing. File left unchanged." << std::endl;
+                    return 1;
+                }
+                out_file << result.text;
+                if (!out_file.good()) {
+                    std::cerr << "Error: Cannot write '" << filename << "'." << std::endl;
+                    return 1;
+                }
+            }
+
+            std::cout << "[wyrmc " << WYRMC_VERSION << "] Formatted '" << filename
+                      << "' (backup: " << backup << ")" << std::endl;
             return 0;
         }
 
