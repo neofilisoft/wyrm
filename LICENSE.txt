@@ -1,5 +1,3 @@
-MIT License
+EULA
 
-Copyright (c) 2026 Neofilisoft
-
-
+I know, you must read it.
